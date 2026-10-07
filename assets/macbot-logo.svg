@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title description">
+  <title id="title">MacBot</title>
+  <desc id="description">MacBot wordmark with a peach four-petal symbol on a dark green background.</desc>
+  <rect width="1200" height="320" rx="20" fill="#172321"/>
+  <g transform="translate(320 96) scale(2)" fill="#e5b794">
+    <path d="M30 30H17a13 13 0 1 1 13-13Z"/>
+    <path d="M34 30V17a13 13 0 1 1 13 13Z"/>
+    <path d="M30 34v13a13 13 0 1 1-13-13Z"/>
+    <path d="M34 34h13a13 13 0 1 1-13 13Z"/>
+  </g>
+  <text x="482" y="191" fill="#eeeae3" font-family="Georgia, 'Times New Roman', serif" font-size="92" letter-spacing="-3">MacBot</text>
+</svg>
