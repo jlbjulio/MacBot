@@ -10,7 +10,7 @@ Chat, explore attachments, research a question, or create something you can save
 
 ## First play
 
-Extract **release/MacBot-0.2.0-Windows-Portable.zip** and open **MacBot.exe** inside the **MacBot-Portable** folder. You see only the executable and one **MacBot** support folder. There is no installer. Keep them together.
+Extract **release/MacBot-0.2.1-Windows-Portable.zip** and open **MacBot.exe** inside the **MacBot-Portable** folder. You see only the executable and one **MacBot** support folder. There is no installer. Keep them together.
 
 The portable download contains MacBot and a small preparation tool. On first launch, a preparation screen downloads and verifies the local AI engines, libraries and all six essential models before opening the workspace. It shows download progress, with pause, resume and retry controls. Compatible existing model caches are verified and reused. Later launches reuse the prepared files.
 
@@ -20,9 +20,9 @@ You need internet access and several GB of free space; allow around 16 GB for th
 
 Conversations, attachments, models and generated files stay in **MacBot/Data**. Move or back up the whole folder to keep your workspace. MCP credentials use Windows protection and must be entered again when moving to another Windows account.
 
-Python, Node, Ollama and AI libraries are prepared directly from their publishers into **MacBot/runtime**. They run privately without a system installation or administrator access. The initial folder is small; the prepared workspace still needs those engines and model files. MacBot needs 64-bit Windows and the system [WebView2 runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/). Tauri uses this system browser engine, which is based on Chromium. Keep the **MacBot** support folder with the executable after preparation.
+Python, Node, Ollama and AI libraries are prepared directly from their publishers into **MacBot/runtime**. They run privately without a system installation or administrator access. The initial folder is small; the prepared workspace still needs those engines and model files. MacBot is built for Windows PCs (x64) and needs the system [WebView2 runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/). Tauri uses this system browser engine, which is based on Chromium. Keep the **MacBot** support folder with the executable after preparation.
 
-Download **MacBot-0.2.0-Windows-Portable.zip** from Releases. It is the only app download; there is no separate engine package or setup executable. First preparation requires internet access. For a new app version, extract it into a fresh folder and copy your **MacBot/Data** folder across.
+Download **MacBot-0.2.1-Windows-Portable.zip** from Releases. It is the only app download; there is no separate engine package or setup executable. First preparation requires internet access. For a new app version, extract it into a fresh folder and copy your **MacBot/Data** folder across.
 
 ## Make something
 
@@ -80,4 +80,4 @@ npm run build:desktop
 backend/.venv/Scripts/python.exe scripts/package-portable.py
 ```
 
-The result is **release/MacBot-0.2.0-Windows-Portable.zip**. Upload that ZIP as the download in a GitHub Release. Keep generated files, prepared models and personal workspace data out of the source repository; they are excluded by `.gitignore`.
+The result is **release/MacBot-0.2.1-Windows-Portable.zip**. Upload that ZIP as the download in a GitHub Release. Keep generated files, prepared models and personal workspace data out of the source repository; they are excluded by `.gitignore`.

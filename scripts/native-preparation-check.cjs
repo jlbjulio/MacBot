@@ -57,18 +57,20 @@ async (page) => {
   await page.keyboard.press("Enter");
   await button("Pause download").waitFor();
   const viewports = [];
-  for (const width of [390, 760, 1380]) {
-    await page.setViewportSize({ width, height: 900 });
+  for (const [width, height] of [[760, 600], [1000, 760], [1380, 900]]) {
+    await page.setViewportSize({ width, height });
     const metrics = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, height: document.querySelector(".setup-panel").getBoundingClientRect().height }));
     if (metrics.overflow) throw Error("Preparation overflows at " + width);
-    viewports.push({ width, ...metrics });
+    viewports.push({ width, windowHeight: height, ...metrics });
     await page.screenshot({ path: `logs/quality/native/minimal-preparation-${width}.png` });
   }
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.setViewportSize({ width: 760, height: 900 });
   await page.evaluate(() => document.documentElement.style.zoom = "2");
   await blocked();
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw Error("Preparation overflows at 200% zoom");
-  await page.screenshot({ path: "logs/quality/native/minimal-preparation-zoom.png" });
+  await button("Pause download").scrollIntoViewIfNeeded();
+  if (!await button("Pause download").isVisible()) throw Error("Download controls are inaccessible at desktop zoom");
+  await page.screenshot({ path: "logs/quality/native/minimal-preparation-zoom.png", fullPage: true });
   await page.evaluate(() => document.documentElement.style.zoom = "");
   await page.evaluate(() => { window.setupFixture.stage = "models"; });
   await page.getByText("3 of 6 complete", { exact: true }).waitFor();
@@ -94,8 +96,16 @@ async (page) => {
   if (motion !== "none") throw Error("Reduced motion was not honored");
   await page.evaluate(() => { window.setupFixture.status = "ready"; });
   await page.getByRole("textbox", { name: "Message MacBot" }).waitFor({ timeout: 25000 });
+  await page.setViewportSize({ width: 760, height: 900 });
+  await page.evaluate(() => document.documentElement.style.zoom = "2");
+  const audio = button("Transcribe an audio file");
+  await audio.scrollIntoViewIfNeeded();
+  if (!await audio.isVisible()) throw Error("Audio attachment control is hidden at desktop zoom");
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw Error("Workspace overflows at desktop zoom");
+  await page.screenshot({ path: "logs/quality/native/windows-workspace-zoom.png", fullPage: true });
+  await page.evaluate(() => document.documentElement.style.zoom = "");
   const actions = await page.evaluate(() => window.setupFixture.actions);
   if (!["bootstrap_pause", "bootstrap_resume", "pause", "resume"].every(value => actions.includes(value))) throw Error("A preparation control did not reach its handler");
   if (errors.length) throw Error(errors.join("\n"));
-  return { scope: "Rendered preparation UI with controlled engine and API fixtures; no real downloads", states: ["engines", "models", "paused", "failed", "retry", "inconsistent", "ready"], viewports, zoom: "200%", reducedMotion: true, keyboardResume: true, technicalCopyHidden: true, actions, errors };
+  return { scope: "Windows desktop preparation UI with controlled engine and API fixtures; no real downloads", states: ["engines", "models", "paused", "failed", "retry", "inconsistent", "ready"], viewports, zoom: "200% in a 760px desktop window", audioControlAtZoom: true, reducedMotion: true, keyboardResume: true, technicalCopyHidden: true, actions, errors };
 }

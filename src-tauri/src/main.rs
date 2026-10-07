@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
+compile_error!("MacBot supports Windows x64 PCs.");
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     fs,

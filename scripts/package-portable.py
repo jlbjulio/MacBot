@@ -8,7 +8,8 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 source = root / "release/MacBot-Portable"
 support = source / "MacBot"
-archive = root / "release/MacBot-0.2.0-Windows-Portable.zip"
+version = json.loads((root / "package.json").read_text(encoding="utf-8"))["version"]
+archive = root / "release" / f"MacBot-{version}-Windows-Portable.zip"
 verify_existing = "--verify-existing" in sys.argv
 working = archive if verify_existing else archive.with_suffix(".zip.partial")
 if not (source / "MacBot.exe").exists():

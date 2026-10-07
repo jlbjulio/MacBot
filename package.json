@@ -1,6 +1,6 @@
 {
   "name": "macbot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "MacBot · local AI workspace",
   "scripts": {

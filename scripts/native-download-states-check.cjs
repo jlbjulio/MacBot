@@ -30,12 +30,14 @@
   }
   try {
     await page.reload();
-    await waitState('Checking your local models');
-    await page.getByRole('status').filter({hasText:'5 / 6 models ready'}).waitFor();
+    await waitState('Checking files');
+    await page.getByText('5 of 6 complete',{exact:true}).waitFor();
     await page.screenshot({path:'logs/quality/native/full-preparation-waiting.png'});
     phase='failed';
     await page.getByRole('button',{name:'Try again',exact:true}).waitFor({timeout:25000});
-    await page.getByRole('alert').filter({hasText:'Test connection interruption'}).waitFor();
+    await page.getByRole('alert').waitFor();
+    await page.locator('summary').click();
+    await page.getByText('Test connection interruption. Retry to continue preparation.',{exact:true}).waitFor();
     await blocked();
     await page.getByRole('button',{name:'Try again',exact:true}).click();
     phase='downloading';
@@ -43,7 +45,7 @@
     await blocked();
     await page.getByRole('button',{name:'Pause download',exact:true}).click();
     phase='paused';
-    await waitState('Model downloads paused');
+    await waitState('Progress saved');
     const viewports = [];
     for(const width of [760,1000,1380]) {
       await page.setViewportSize({width,height:900});
@@ -55,7 +57,7 @@
     await page.getByRole('button',{name:'Resume download',exact:true}).focus();
     await page.keyboard.press('Enter');
     phase='inconsistent';
-    await waitState('Checking your local models');
+    await waitState('Checking files');
     phase='ready';
     await composer.waitFor({timeout:25000});
     await page.waitForFunction(()=>!document.querySelector('option[value="image"]')?.disabled, undefined, {timeout:15000});

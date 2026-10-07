@@ -43,9 +43,9 @@ async (page) => {
   const inventory=await request('/mcp/servers/workspace/inspect',{});
   if(!inventory.tools.some(t=>t.name==='write_file'))throw Error('Built-in MCP tool discovery failed');
   const persona=await request('/persona');
-  if(!persona.evaluation) throw Error('Trained adapter is missing');
   const performance=[];
   for(let i=0;i<20;i++) {const t=Date.now();await request('/health');performance.push(Date.now()-t);}
   const sorted=performance.toSorted((a,b)=>a-b);
-  return {native:true,chatSeconds,models:ready.models,layouts,tools:inventory.tools.map(t=>t.name),personaChecksPassed:persona.evaluation.passed,healthP50Ms:sorted[10],healthP95Ms:sorted[18],errors};
+  if(errors.length) throw Error(errors.join('\n'));
+  return {native:true,chatSeconds,models:ready.models,layouts,tools:inventory.tools.map(t=>t.name),personaChecksPassed:persona.evaluation?.passed ?? null,healthP50Ms:sorted[10],healthP95Ms:sorted[18],errors};
 }

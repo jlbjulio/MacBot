@@ -9,6 +9,9 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 
 const require = createRequire(import.meta.url);
+if (process.platform !== "win32" || process.arch !== "x64") {
+  throw new Error("MacBot desktop builds require Windows x64.");
+}
 mkdirSync("logs", { recursive: true });
 const env = {
   ...process.env,

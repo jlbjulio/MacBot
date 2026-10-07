@@ -1000,6 +1000,7 @@ h2 {
     font-size: 10px;
   }
 }
+/* Desktop zoom can reduce a 760px window to a 380px layout viewport. */
 @media (max-width: 520px) {
   .topbar-left > span {
     display: none;
@@ -1064,8 +1065,9 @@ h2 {
   .composer-right {
     gap: 3px;
   }
-  .audio-import {
-    display: none;
+  .composer-tools {
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .research-toggle {
     padding: 7px;
@@ -1174,8 +1176,4 @@ button:disabled { cursor: default; opacity: 0.55; }
 .setup-error p { margin: 0 0 10px; }
 .setup-error summary { width: fit-content; padding: 6px 0; cursor: pointer; color: #eeeae3; }
 .setup-error details p { margin-top: 8px; color: #b9c2b6; overflow-wrap: anywhere; }
-@media (max-width: 520px) {
-  .setup-screen { padding: 32px 24px; }
-  .setup-record { margin-top: 36px; }
-}
 .connection-fields{display:grid;gap:9px;margin:24px 0;padding:18px;border:1px solid #80907d;border-radius:12px}.connection-fields h4{margin:0 0 8px}.connection-fields small,.privacy-section small{line-height:1.6;color:#b9c2b6}.connection-trust{display:flex;align-items:flex-start;gap:10px;margin-top:12px;font-size:13px;line-height:1.5}.connection-trust input{width:17px;min-width:17px;height:17px;accent-color:#efb594;margin-top:2px}.settings-section details{margin:18px 0}.settings-section summary{cursor:pointer;font-size:13px;padding:10px 0}.data-location{display:block;overflow-wrap:anywhere;white-space:normal;font-size:11px;margin:10px 0}.privacy-section button{margin:10px 12px 10px 0}.danger-action{color:#ffbcb1;border-color:#e89888}.artifact-card small{display:block;font-size:11px;color:#b9c2b6;margin:7px 0}
