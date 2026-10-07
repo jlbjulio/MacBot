@@ -55,19 +55,17 @@ if len(sys.argv) > 1 and sys.argv[1] == "stop":
     state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
     print(json.dumps(state["exit"]))
 else:
-    directory = output / ("engine-data" if "--engines" in sys.argv else "background-data" if "--background" in sys.argv else "setup-data" if "--setup" in sys.argv else "final-data" if "--final" in sys.argv else "relocated-data" if "--relocated" in sys.argv else "data")
+    version = json.loads((root / "package.json").read_text(encoding="utf-8"))["version"]
+    directory = output / ("engine-data" if "--engines" in sys.argv else "background-data" if "--background" in sys.argv else "setup-data" if "--setup" in sys.argv else f"final-{version}-data" if "--final" in sys.argv else "relocated-data" if "--relocated" in sys.argv else "data")
     # Use packaged model files while keeping QA conversations separate.
     (directory / "models").mkdir(parents=True, exist_ok=True)
-    source_models = root / "backend/data/models"
+    source_models = Path(os.environ["LOCALAPPDATA"]) / "MacBot/Development/Data/models"
     for model in ([] if "--setup" in sys.argv or "--background" in sys.argv else source_models.iterdir()):
         if model.name.startswith(".") or model.name.startswith("models--"):
             continue
         target = directory / "models" / model.name
         if model.is_dir() and not target.exists():
             subprocess.run(["cmd", "/c", "mklink", "/J", str(target), str(model)], capture_output=True, check=True)
-    chat_target = directory / "models/ollama"
-    if "--setup" not in sys.argv and "--background" not in sys.argv and not chat_target.exists():
-        subprocess.run(["cmd", "/c", "mklink", "/J", str(chat_target), str(Path.home() / ".ollama/models")], capture_output=True, check=True)
     env = {**os.environ, "MACBOT_DATA_DIR": str(directory), "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--remote-debugging-port=9223"}
     env.pop("MACBOT_TOKEN", None)
     env.pop("MACBOT_API_URL", None)

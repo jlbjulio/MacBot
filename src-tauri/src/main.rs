@@ -164,57 +164,6 @@ fn start_runtime(app: &tauri::AppHandle) -> Result<Connection, String> {
         .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| e.to_string())?;
-    let ollama_port = if portable {
-        TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| e.to_string())?
-            .local_addr()
-            .map_err(|e| e.to_string())?
-            .port()
-    } else {
-        11434
-    };
-    let ollama_url = format!("http://127.0.0.1:{ollama_port}");
-    let ollama_running = client
-        .get(format!("{ollama_url}/api/version"))
-        .send()
-        .map(|r| r.status().is_success())
-        .unwrap_or(false);
-    if !ollama_running {
-        let local = if portable {
-            root.join("runtime/ollama/ollama.exe")
-        } else {
-            std::env::var_os("LOCALAPPDATA")
-                .map(PathBuf::from)
-                .unwrap_or_default()
-                .join("Programs/Ollama/ollama.exe")
-        };
-        let mut command = Command::new(if local.exists() {
-            local
-        } else {
-            PathBuf::from("ollama")
-        });
-        let logfile =
-            fs::File::create(directory.join("logs/ollama.log")).map_err(|e| e.to_string())?;
-        command
-            .arg("serve")
-            .env("OLLAMA_HOST", format!("127.0.0.1:{ollama_port}"))
-            .env("OLLAMA_CONTEXT_LENGTH", "4096")
-            .env("OLLAMA_NO_CLOUD", "1")
-            .stdin(Stdio::null())
-            .stdout(logfile.try_clone().map_err(|e| e.to_string())?)
-            .stderr(logfile);
-        if portable {
-            command.env("OLLAMA_MODELS", directory.join("models/ollama"));
-        }
-        match spawn_hidden(&mut command) {
-            Ok(child) => register_child(app, child)?,
-            Err(error) => fs::write(
-                directory.join("logs/ollama.log"),
-                format!("Local model engine unavailable: {error}"),
-            )
-            .map_err(|e| e.to_string())?,
-        }
-    }
     let port = TcpListener::bind("127.0.0.1:0")
         .map_err(|e| e.to_string())?
         .local_addr()
@@ -245,9 +194,6 @@ fn start_runtime(app: &tauri::AppHandle) -> Result<Connection, String> {
     if let Some(cache) = existing_hf {
         command.env("MACBOT_EXISTING_HF_CACHE", cache);
     }
-    if let Some(cache) = std::env::var_os("OLLAMA_MODELS") {
-        command.env("MACBOT_EXISTING_OLLAMA_MODELS", cache);
-    }
     if portable {
         command.arg(root.join("runtime/python/app/desktop_entry.py"));
         command.env("PYTHONHOME", python.parent().unwrap());
@@ -257,7 +203,6 @@ fn start_runtime(app: &tauri::AppHandle) -> Result<Connection, String> {
         .args(["--port", &port.to_string(), "--parent-watch"])
         .env("MACBOT_TOKEN", &token)
         .env("MACBOT_DATA_DIR", &directory)
-        .env("MACBOT_OLLAMA_URL", &ollama_url)
         .env("HF_HOME", directory.join("cache/huggingface"))
         .env("HF_HUB_CACHE", directory.join("cache/huggingface/hub"))
         .env(
@@ -279,7 +224,7 @@ fn start_runtime(app: &tauri::AppHandle) -> Result<Connection, String> {
     let base_url = format!("http://127.0.0.1:{port}/api");
     let start = Instant::now();
     // Cold initialization of the local AI libraries exceeded 55 seconds during native QA.
-    while start.elapsed() < Duration::from_secs(120) {
+    while start.elapsed() < Duration::from_secs(180) {
         if app.state::<RuntimeState>().closing.load(Ordering::Acquire) {
             return Err("Startup cancelled".into());
         }

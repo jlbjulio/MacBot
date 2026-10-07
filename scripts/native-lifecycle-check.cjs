@@ -28,7 +28,7 @@ async (page) => {
     throw new Error("The packaged application is not ready.");
   if (result.historyCacheControl !== "no-store")
     throw new Error("Private API responses must not enter the browser cache.");
-  if (!JSON.stringify(result.models).includes("qwen3.5:4b"))
+  if (!JSON.stringify(result.models).includes("macbot-4b"))
     throw new Error("The installed local model is missing.");
   if (result.overflow) throw new Error("The native window has horizontal overflow.");
   if (result.preparation.status !== "ready" || !Object.values(result.preparation.capabilities).every(Boolean))

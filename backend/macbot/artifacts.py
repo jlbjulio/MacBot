@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 from pydantic import BaseModel, Field, model_validator
 
 from .assets import VOICE_FILE, VOICE_PREFIX, prepare_asset
-from .design import Theme, DocumentSpec, write_document
+from .design import Theme, DocumentSpec, requested_theme, write_document
 
 
 class Chart(BaseModel):
@@ -328,11 +328,15 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
             instruction += "Write short bullets; put detailed explanations in speaker notes. Columns contain heading and text. Never invent quotations or numerical results. "
             instruction += "Fill comparison columns and timeline steps with useful content, not empty arrays. Suggested teaching activities are welcome when clearly presented as a proposal. "
         else:
-            instruction += "Organise the document into readable sections, bullets and tables. Use a cover unless a short document was requested. "
+            instruction += "Organise the document into readable sections. Put lists in bullets and tables in table.columns and table.rows, never as Markdown in text. "
+            instruction += "The renderer creates the title page from title and subtitle when cover=true; do not add a Title Page or Cover section. Use a cover unless a short document was requested. "
         instruction += "Example content object: " + json.dumps(example)
+        output_schema = schema.model_json_schema()
+        output_schema["required"] = list(dict.fromkeys([*output_schema.get("required", []), "theme"]))
+        output_schema["$defs"]["Theme"]["required"] = ["background", "foreground", "accent", "font"]
         value: dict[str, Any] | None = None
         for attempt in range(2):
-            raw = await runtime.complete(model, instruction + "\nRequest:\n" + prompt, json_mode=schema.model_json_schema(), max_tokens=2800)
+            raw = await runtime.complete(model, instruction + "\nRequest:\n" + prompt, json_mode=output_schema, max_tokens=2800)
             try:
                 value = schema.model_validate_json(raw).model_dump()
                 break
@@ -343,6 +347,7 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
                 instruction += "\nYour previous output was invalid. Include actual content values for every required field. Validation feedback: " + str(error)[:600]
         assert value is not None
         request = prompt.split("<untrusted_attachment", 1)[0]
+        value["theme"] = requested_theme(value["theme"], request)
         if mode == "spreadsheet":
             value = prepare_sheet(value, request)
         elif mode == "presentation":
@@ -357,6 +362,8 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
                         slide["metric_value"], slide["metric_label"] = metric.groups()
         if mode == "document":
             request = prompt.split("<untrusted_attachment", 1)[0]
+            from .design import prepare_document
+            value = prepare_document(value, request)
             if re.search(r"\bpdf\b", request, re.I):
                 value["format"] = "both" if re.search(r"\b(?:docx|word)\b", request, re.I) else "pdf"
             elif re.search(r"\b(?:docx|word)\b", request, re.I):

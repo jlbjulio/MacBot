@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .documents import export_document, extract
 from .features import feature_routes
 from .graph import build_graph
-from .runtime import BASE_URL, Ollama, local_model
+from .runtime import MODEL_NAME, REASONING, LlamaRuntime, local_model
 from .retrieval import RetrievalIndex
 from .store import Store, data_directory, now
 from .setup import Setup, setup_routes, require_models
@@ -28,7 +28,7 @@ from .privacy import privacy_routes
 
 logger = logging.getLogger("macbot")
 store = Store(data_directory())
-runtime = Ollama()
+runtime = LlamaRuntime(store.directory)
 TOKEN = os.environ.get("MACBOT_TOKEN") or secrets.token_hex(32)
 tasks: dict[str, asyncio.Task] = {}
 work_lock = asyncio.Lock()
@@ -48,6 +48,7 @@ async def lifespan(app):
         task.cancel()
     await asyncio.gather(*tasks.values(), return_exceptions=True)
     retrieval.close()
+    await runtime.unload()
 
 
 app = FastAPI(title="MacBot", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -107,23 +108,25 @@ class RunRequest(BaseModel):
     chat_id: str
     prompt: str = Field(min_length=1, max_length=12000)
     mode: RunMode = "chat"
-    model: str = Field(default="qwen3.5:4b", min_length=1, max_length=150)
+    model: str = Field(default=MODEL_NAME, min_length=1, max_length=150)
+    reasoning: Literal["low", "medium", "high"] = "medium"
     uploads: list[str] = Field(default_factory=list, max_length=5)
 
 
 class Settings(BaseModel):
-    model: str = "qwen3.5:4b"
+    model: str = MODEL_NAME
+    reasoning: Literal["low", "medium", "high"] = "medium"
     whisper_model: Literal["tiny", "base", "small"] = "base"
     language: Literal["es", "en", "auto"] = "en"
 
 
 class ModelDownload(BaseModel):
-    model: Literal["qwen3.5:4b", "qwen3.5:9b"]
+    model: Literal["macbot-4b"]
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "0.2.1"}
+    return {"status": "ok", "version": "0.3.0"}
 
 
 @app.get("/api/models")
@@ -131,65 +134,15 @@ async def models():
     return await runtime.models()
 
 
-async def download_model(job_id, model):
-    import httpx
-
-    try:
-        store.execute("UPDATE jobs SET status='running' WHERE id=?", (job_id,))
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5), trust_env=False) as client:
-            async with client.stream(
-                "POST", BASE_URL + "/api/pull", json={"model": model}
-            ) as response:
-                response.raise_for_status()
-                previous_percent = -1
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    part = json.loads(line)
-                    if part.get("error"):
-                        raise ValueError(part["error"])
-                    percent = int(100 * part.get("completed", 0) / (part.get("total") or 1))
-                    if percent != previous_percent or not part.get("total"):
-                        store.event(
-                            job_id,
-                            {"type": "stage", "label": f"{part.get('status', 'Downloading')} · {percent}%"},
-                        )
-                        previous_percent = percent
-        store.execute(
-            "UPDATE jobs SET status='completed',result=? WHERE id=?", (json.dumps({"model": model}), job_id)
-        )
-        store.event(job_id, {"type": "done"})
-    except asyncio.CancelledError:
-        store.execute("UPDATE jobs SET status='cancelled' WHERE id=?", (job_id,))
-        store.event(job_id, {"type": "cancelled"})
-    except Exception as error:
-        logger.exception("Model download failed")
-        store.execute(
-            "UPDATE jobs SET status='failed',result=? WHERE id=?", (json.dumps({"error": str(error)}), job_id)
-        )
-        store.event(
-            job_id,
-            {"type": "error", "message": "The model could not be downloaded. Check the local engine and your connection."},
-        )
-    finally:
-        tasks.pop(job_id, None)
-
-
 @app.post("/api/models/download")
 async def start_model_download(value: ModelDownload):
-    if value.model == "qwen3.5:4b" and os.environ.get("MACBOT_PORTABLE") and not setup.chat_ready():
-        raise HTTPException(409, "Use Resume downloads in the model panel to prepare the main model.")
-    if len(tasks) >= 4 or store.execute(
-        "SELECT id FROM jobs WHERE kind='model' AND status IN ('queued','running')"
-    ):
-        raise HTTPException(409, "A model is already downloading, or the queue is full.")
-    jid = uuid4().hex
-    store.execute(
-        "INSERT INTO jobs(id,chat_id,kind,status,request,created) VALUES(?,?,?,?,?,?)",
-        (jid, None, "model", "queued", value.model_dump_json(), now()),
-    )
-    tasks[jid] = asyncio.create_task(download_model(jid, value.model))
-    return {"id": jid}
+    if setup.task and not setup.task.done():
+        raise HTTPException(409, "Model preparation is already running.")
+    setup.stop.clear()
+    setup.task = asyncio.create_task(setup.run(sys.modules[__name__]))
+    tasks["setup"] = setup.task
+    setup.task.add_done_callback(lambda _: tasks.pop("setup", None))
+    return {"started": True}
 
 
 @app.get("/api/diagnostics")
@@ -206,17 +159,16 @@ async def diagnostics():
 
 @app.get("/api/settings")
 async def settings():
-    return {
-        **Settings().model_dump(),
-        **store.setting("settings", {}),
-        "voice_ready": importlib.util.find_spec("faster_whisper") is not None,
-    }
+    value = {**Settings().model_dump(), **store.setting("settings", {})}
+    value["model"] = MODEL_NAME
+    value["reasoning"] = value.get("reasoning") if value.get("reasoning") in ("low", "medium", "high") else "medium"
+    return {**value, "voice_ready": importlib.util.find_spec("faster_whisper") is not None}
 
 
 @app.put("/api/settings")
 async def save_settings(value: Settings):
     try:
-        local_model(value.model)
+        value.model = local_model(value.model)
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     store.set_setting("settings", value.model_dump())
@@ -249,6 +201,7 @@ async def execute_job(job_id, value, resume=False, decision=None):
     def emit(event):
         store.event(job_id, event)
 
+    reasoning_token = REASONING.set(value.get("reasoning", "medium"))
     try:
         emit({"type": "stage", "label": "Queued", "agent": "supervisor"})
         async with work_lock:
@@ -282,6 +235,7 @@ async def execute_job(job_id, value, resume=False, decision=None):
         )
         emit({"type": "error", "message": detail})
     finally:
+        REASONING.reset(reasoning_token)
         tasks.pop(job_id, None)
 
 
@@ -311,7 +265,7 @@ async def run(value: RunRequest):
     ):
         raise HTTPException(409, "This conversation already has an active task.")
     try:
-        local_model(value.model)
+        value.model = local_model(value.model)
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     if value.mode == "research" and value.uploads:

@@ -16,6 +16,7 @@ htmlcov/
 # App dependencies, build output and local evidence
 node_modules/
 build/
+unsloth_compiled_cache/
 dist/
 release/
 logs/

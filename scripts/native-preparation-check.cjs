@@ -8,7 +8,7 @@ async (page) => {
       invoke: async command => {
         const fixture = window.setupFixture;
         if (command === "connection") return { baseUrl: "/api" };
-        if (command === "bootstrap_status") return { status: fixture.stage === "engines" ? fixture.status : "ready", label: "Installing Python, Node and Ollama", completed: 64 * 1024 ** 2, total: 256 * 1024 ** 2, error: "" };
+        if (command === "bootstrap_status") return { status: fixture.stage === "engines" ? fixture.status : "ready", label: "Preparing local libraries", completed: 64 * 1024 ** 2, total: 256 * 1024 ** 2, error: "" };
         if (command === "bootstrap_pause" || command === "bootstrap_resume") {
           fixture.actions.push(command);
           fixture.status = command === "bootstrap_pause" ? "paused" : "downloading";
@@ -47,7 +47,7 @@ async (page) => {
   const blocked = async () => {
     if (await page.getByRole("textbox", { name: "Message MacBot" }).count()) throw Error("Chat opened before preparation completed");
     const copy = await page.locator(".setup-panel").innerText();
-    if (/Gemma|Ollama|Python|Node|Hugging Face|technical model|six essential|libraries/i.test(copy)) throw Error("Technical copy appears in the main preparation screen");
+    if (/Gemma|Transformers|Python|Node|Hugging Face|technical model|six essential|libraries/i.test(copy)) throw Error("Technical copy appears in the main preparation screen");
   };
   await page.getByRole("heading", { name: "Getting ready", exact: true }).waitFor();
   await blocked();

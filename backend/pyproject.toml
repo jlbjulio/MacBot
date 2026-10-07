@@ -1,6 +1,6 @@
 [project]
 name = "macbot-backend"
-version = "0.2.1"
+version = "0.3.0"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "httpx>=0.28,<1",
@@ -10,7 +10,7 @@ dependencies = [
   "python-docx>=1.2,<2", "openpyxl>=3.1,<4", "reportlab>=4.4,<5",
   "qdrant-client[fastembed]>=1.15,<2", "pillow>=11,<13", "psutil>=7,<8",
   "sentence-transformers[image]==6.1.0", "transformers==5.19.0", "librosa>=0.11,<1", "soundfile>=0.13,<1",
-  "torch==2.14.1", "diffusers==0.41.0", "accelerate>=1.1,<2", "peft>=0.17,<1",
+  "torch==2.11.0", "torchvision==0.26.0", "diffusers==0.41.0", "accelerate>=1.1,<2",
   "piper-tts==1.8.0", "mcp==2.3.0", "langgraph-checkpoint-sqlite>=3,<5",
   "rapidocr==3.9.2", "pypdfium2==5.14.0", "python-pptx==1.0.2",
 ]
@@ -26,7 +26,6 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
-torchaudio = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -21,7 +21,7 @@ export function Privacy({ active, onChange, onError }: {active: string | null; o
     <p>Web research sends search queries to a search provider. External MCP services receive the arguments you approve. Model hosts receive download requests; they do not receive your conversations.</p>
     {state && <><small>{state.conversations} conversations · {state.attachments} attachments</small><code className="data-location">{state.directory}</code><button onClick={() => void navigator.clipboard.writeText(state.directory).catch(failure => onError(failure.message))}>Copy folder location</button></>}
     {active && <button disabled={working} onClick={() => void remove(false)}>Delete current conversation</button>}
-    <details><summary>Erase your personal workspace</summary><p>This removes conversations, uploads, generated files, workspace files, connections and personal style adapters. Downloaded public models stay available. Runtime logs and backups may retain filenames; this does not guarantee secure disk erasure.</p>
+    <details><summary>Erase your personal workspace</summary><p>This removes conversations, uploads, generated files, workspace files and connections. Downloaded public models stay available. Runtime logs and backups may retain filenames; this does not guarantee secure disk erasure.</p>
       <label htmlFor="erase-confirmation">Type ERASE MY WORKSPACE</label><input id="erase-confirmation" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="off" />
       <button className="danger-action" disabled={working || confirmation !== "ERASE MY WORKSPACE"} onClick={() => void remove(true)}>{working ? "Erasing…" : "Erase workspace"}</button>
     </details>

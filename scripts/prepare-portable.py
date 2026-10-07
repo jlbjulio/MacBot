@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,11 +48,14 @@ def prepare():
     (app / "macbot").mkdir(parents=True, exist_ok=True)
     for source in (ROOT / "backend/macbot").glob("*.py"):
         shutil.copy2(source, app / "macbot" / source.name)
-    for name in ("desktop_entry.py", "model-manifest.json", "ollama-model.json"):
+    for stale in (app / "ollama-model.json", app / "macbot/persona.py",
+                  TARGET / "bootstrap/app/ollama-model.json", TARGET / "bootstrap/app/macbot/persona.py"):
+        stale.unlink(missing_ok=True)
+    for name in ("desktop_entry.py", "model-manifest.json", "chat-model.json"):
         shutil.copy2(ROOT / "backend" / name, app / name)
     site = PAYLOAD / "site-packages"
     for name in ("antlr4", "antlr4_python3_runtime-4.9.3.dist-info"):
-        shutil.copytree(ROOT / "backend/.venv/Lib/site-packages" / name, site / name,
+        shutil.copytree(Path(sys.executable).parents[1] / "Lib/site-packages" / name, site / name,
                         dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     shutil.copy2(ROOT / "bootstrap/requirements.txt", PAYLOAD / "requirements.txt")
     if digest(PAYLOAD / "requirements.txt") != manifest["requirements_sha256"]:
@@ -69,7 +73,7 @@ def prepare():
         raise RuntimeError("Visual C++ app-local redistributable files are required for the desktop build.")
     for library in (versions[-1] / "x64/Microsoft.VC143.CRT").glob("*.dll"):
         shutil.copy2(library, TARGET / library.name)
-    (TARGET / "portable.marker").write_text("MacBot portable 0.2\n", encoding="utf-8")
+    (TARGET / "portable.marker").write_text("MacBot portable 0.3\n", encoding="utf-8")
     notices = TARGET / "licenses"
     notices.mkdir(parents=True, exist_ok=True)
     (notices / "MICROSOFT-RUNTIME.txt").write_text(

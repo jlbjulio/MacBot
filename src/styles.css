@@ -1127,9 +1127,9 @@ h2 {
 .connection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .capability-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; }
 .capability-list small { color: #bcc6b5; }
-#mcp-config, #persona-examples { width: 100%; padding: 12px; margin: 8px 0; background: #172322; color: #f8eddb; border: 1px solid #687566; border-radius: 10px; resize: vertical; }
+#mcp-config { width: 100%; padding: 12px; margin: 8px 0; background: #172322; color: #f8eddb; border: 1px solid #687566; border-radius: 10px; resize: vertical; }
 .connection-result { overflow-wrap: anywhere; }
-.creation-mode, .composer, .search-box, #mcp-config, #persona-examples,
+.creation-mode, .composer, .search-box, #mcp-config,
 .artifact-card button, .read-aloud button, .connection-actions button, .approval-card button, .resume-card button { border-color: #80907d; }
 button:disabled { cursor: default; opacity: 0.55; }
 .settings-section input, .settings-section select, .settings-section textarea { border-color: #80907d; }

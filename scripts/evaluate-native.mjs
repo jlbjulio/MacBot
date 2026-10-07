@@ -31,7 +31,7 @@ const page = web ? await browser.newPage() : browser
   .find((page) => page.url().includes("tauri.localhost"));
 if (!page) throw new Error("The native QA window was not found.");
 page.setDefaultTimeout(15000);
-const kind = ["research", "lifecycle", "product", "capabilities", "attachments", "persona", "designed", "bootstrap", "download-states", "engine-smoke", "preparation"].includes(process.argv[2])
+const kind = ["research", "lifecycle", "product", "capabilities", "attachments", "designed", "bootstrap", "download-states", "engine-smoke", "preparation"].includes(process.argv[2])
   ? process.argv[2]
   : "product";
 const fn = new Function(

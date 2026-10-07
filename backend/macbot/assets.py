@@ -6,7 +6,6 @@ MODELS = {
     "image": ("segmind/tiny-sd", "cad0bd7495fa6c4bcca01b19a723dc91627fe84f"),
     "voice": ("rhasspy/piper-voices", "c10ece1aade47bb51c153c893d14e5bf8e5b7117"),
     "verifier": ("cross-encoder/nli-deberta-v3-small", "fa2804872c3b4bd748f38c0185cc85775361e735"),
-    "persona": ("Qwen/Qwen3-0.6B", "c1899de289a04d12100db370d81485cdf75e47ca"),
     "whisper": ("Systran/faster-whisper-base", "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66"),
 }
 VOICE_PREFIX = "en/en_US/ljspeech/medium/"

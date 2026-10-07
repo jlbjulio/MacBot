@@ -40,7 +40,7 @@ def privacy_routes(service):
         async with service.work_lock:
             await asyncio.to_thread(service.retrieval.release_models)
             service.retrieval.close()
-            for name in ("uploads", "artifacts", "workspace", "qdrant", "models/persona-adapter"):
+            for name in ("uploads", "artifacts", "workspace", "qdrant"):
                 await asyncio.to_thread(remove_owned, root, root / name)
             for name in ("uploads", "artifacts", "workspace"):
                 (root / name).mkdir(parents=True, exist_ok=True)

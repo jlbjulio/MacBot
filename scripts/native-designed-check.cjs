@@ -16,6 +16,7 @@ async (page) => {
   ]){
     if(process.argv.includes('--files-only') && mode==='image') continue;
     if(process.argv.includes('--slides-only') && mode!=='presentation') continue;
+    if(process.argv.includes('--document-only') && mode!=='chat') continue;
     if(process.argv.includes('--layout-only')) continue;
     await page.getByRole('combobox',{name:'MacBot task'}).selectOption(mode);
     await composer.fill(prompt);const started=Date.now();
@@ -41,7 +42,7 @@ async (page) => {
     if(result.overflow || result.dialogOverflow)throw Error(`Settings overflow at ${width}px`);
     layouts.push(result);
   }
-  await page.getByLabel('Local model',{exact:true}).scrollIntoViewIfNeeded();
+  await page.getByText('MacBot 4B',{exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:'logs/quality/native/model-settings-final.png'});
   await page.keyboard.press('Escape');
   return {results,layouts,errors};

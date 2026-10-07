@@ -1,20 +1,20 @@
 {
   "name": "macbot",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
-  "description": "MacBot · local AI workspace",
+  "description": "MacBot \u00b7 local AI workspace",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:web": "vite --host 127.0.0.1",
     "dev:browser": "node scripts/dev.mjs --web-only",
-    "dev:backend": "uv run --directory backend uvicorn macbot.api:app --host 127.0.0.1 --port 8765",
+    "dev:backend": "node scripts/dev.mjs --backend-only",
     "build": "tsc --noEmit && vite build",
     "start": "node scripts/start.mjs",
     "tauri": "tauri",
-    "build:backend": "backend/.venv/Scripts/python.exe scripts/prepare-portable.py",
+    "build:backend": "node scripts/build-desktop.mjs --prepare-only",
     "build:desktop": "node scripts/build-desktop.mjs",
     "check": "tsc --noEmit",
-    "test:backend": "uv run --directory backend --extra dev pytest -q"
+    "test:backend": "node scripts/dev.mjs --test-backend"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

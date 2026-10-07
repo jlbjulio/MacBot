@@ -2,6 +2,7 @@
 import importlib.metadata
 import json
 import re
+import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -13,7 +14,7 @@ pinned_names = {match.group(1).lower().replace("_", "-")
                 for match in re.finditer(r"^([A-Za-z0-9_.-]+)(?:==| @ )",
                                          (root / "bootstrap/requirements.txt").read_text(), re.MULTILINE)}
 packages = []
-for distribution in importlib.metadata.distributions(path=[str(root / "backend/.venv/Lib/site-packages")]):
+for distribution in importlib.metadata.distributions(path=[str(Path(sys.executable).parents[1] / "Lib/site-packages")]):
     metadata = distribution.metadata
     if metadata["Name"].lower().replace("_", "-") not in pinned_names:
         continue
@@ -27,7 +28,7 @@ frontend = [{"package": name.removeprefix("node_modules/"), "version": info.get(
             for name, info in lock["packages"].items() if name and not info.get("dev")]
 versions = {item["name"].title(): item["version"] for item in engines["components"]}
 notice = {"models": json.loads((root / "backend/model-manifest.json").read_text()),
-          "chat_model": {"name": "qwen3.5:4b", "license": "Apache-2.0", "source": "https://ollama.com/library/qwen3.5"},
+          "chat_model": {"name": "MacBot 4B Q4_K_M GGUF", "license": "Apache-2.0", "source": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF"},
           "downloaded_python_packages": sorted(packages, key=lambda value: value["package"].lower()), "frontend_packages": frontend,
           "runtimes": {**versions, "Python": "3.11.16", "Tauri": "2 (versions pinned in src-tauri/Cargo.lock)"},
           "notes": ["Engines, Python libraries and models are prepared on first launch and retain their own licenses.",
@@ -35,10 +36,11 @@ notice = {"models": json.loads((root / "backend/model-manifest.json").read_text(
                     "Python libraries, including Piper, are installed directly from their publishers on first launch; they are not bundled in this ZIP.",
                     "The bundled uv 0.12.21 preparation tool is MIT/Apache-2.0; its license texts are under bootstrap.",
                     "ANTLR Python runtime 4.9.3 source is bundled under BSD-3-Clause; its license text is under bootstrap.",
-                    "Python package license files are retained in runtime/python/Lib/site-packages; Node and Ollama retain their notices.",
+                    "Python package license files are retained in runtime/python/Lib/site-packages; Node retains its notices.",
                     "Version and license metadata is an inventory, not a legal determination."]}
 (notices / "THIRD-PARTY.json").write_text(json.dumps(notice, indent=2), encoding="utf-8")
 (notices / "LICENSE").write_bytes((root / "LICENSE").read_bytes())
+(notices / "LLAMA-MIT.txt").write_bytes((root / "bootstrap/LLAMA-MIT.txt").read_bytes())
 old_microsoft_notice = target / "MICROSOFT-RUNTIME.txt"
 if old_microsoft_notice.is_file():
     old_microsoft_notice.replace(notices / old_microsoft_notice.name)

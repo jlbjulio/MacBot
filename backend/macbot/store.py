@@ -55,8 +55,6 @@ class Store:
                     self.db.execute(f"UPDATE {table} SET path=? WHERE id=?", (str(target), row["id"]))
         self.db.commit()
 
-        if self.setting("persona_training", {}).get("state") == "running":
-            self.set_setting("persona_training", {"state": "interrupted", "error": "MacBot closed during training. Start a new session."})
 
     def execute(self, sql, args=()):
         with self.lock:
@@ -135,4 +133,5 @@ class Store:
 
 
 def data_directory():
-    return Path(os.environ.get("MACBOT_DATA_DIR", Path(__file__).resolve().parents[1] / "data"))
+    default = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "MacBot/Development/Data"
+    return Path(os.environ.get("MACBOT_DATA_DIR", default))

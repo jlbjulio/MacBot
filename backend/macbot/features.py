@@ -12,62 +12,9 @@ class Approval(BaseModel):
     approved: bool
 
 
-class TrainingRequest(BaseModel):
-    examples: list[dict[str, str]] | None = None
-
-
-class PersonaSetting(BaseModel):
-    enabled: bool
-
-
 def feature_routes(service):
     router = APIRouter(prefix="/api")
     add_workspace(service.store)
-
-    @router.get("/persona")
-    async def persona_status():
-        path = service.store.directory / "models/persona-adapter/evaluation.json"
-        return {"enabled": service.store.setting("persona_enabled", False),
-                "status": service.store.setting("persona_training", {"state": "idle"}),
-                "evaluation": json.loads(path.read_text(encoding="utf-8")) if path.exists() else None}
-
-    @router.put("/persona")
-    async def persona_setting(value: PersonaSetting):
-        path = service.store.directory / "models/persona-adapter/evaluation.json"
-        if value.enabled and (not path.exists() or not json.loads(path.read_text(encoding="utf-8")).get("passed")):
-            raise HTTPException(409, "Train an adapter that passes its preservation checks before enabling it.")
-        service.store.set_setting("persona_enabled", value.enabled)
-        return {"enabled": value.enabled}
-
-    @router.post("/persona/train")
-    async def train_persona(value: TrainingRequest):
-        if service.store.setting("persona_training", {}).get("state") == "running":
-            raise HTTPException(409, "A training session is already running.")
-        service.store.set_setting("persona_training", {"state": "running"})
-        service.store.set_setting("persona_enabled", False)
-        async def run():
-            try:
-                from .persona import train
-                async with service.work_lock:
-                    await asyncio.to_thread(service.retrieval.release_models)
-                    await service.runtime.unload(service.store.setting("settings", {}).get("model", "qwen3.5:4b"))
-                    await asyncio.to_thread(train, service.store.directory, value.examples)
-                service.store.set_setting("persona_training", {"state": "completed"})
-            except Exception as error:
-                service.store.set_setting("persona_training", {"state": "failed", "error": str(error)[:300]})
-        service.tasks["persona-training"] = asyncio.create_task(run())
-        service.tasks["persona-training"].add_done_callback(lambda _: service.tasks.pop("persona-training", None))
-        return {"started": True}
-
-    @router.get("/persona/export")
-    async def export_persona():
-        import shutil
-        path = service.store.directory / "models/persona-adapter"
-        if not path.exists():
-            raise HTTPException(404, "Train an adapter before exporting it.")
-        target = service.store.directory / "artifacts/persona-adapter"
-        await asyncio.to_thread(shutil.make_archive, str(target), "zip", str(path))
-        return FileResponse(target.with_suffix(".zip"), filename="MacBot-persona-adapter.zip")
 
     @router.get("/capabilities")
     async def capabilities():
@@ -99,7 +46,7 @@ def feature_routes(service):
         if not path.exists():
             async with service.work_lock:
                 await asyncio.to_thread(service.retrieval.release_models)
-                await service.runtime.unload(service.store.setting("settings", {}).get("model", "qwen3.5:4b"))
+                await service.runtime.unload(service.store.setting("settings", {}).get("model", "macbot-4b"))
                 await asyncio.to_thread(synthesize, rows[0]["content"], path, service.store.directory)
         return FileResponse(path, filename="MacBot-voice.wav")
 

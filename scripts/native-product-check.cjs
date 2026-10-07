@@ -17,10 +17,15 @@ async (page) => {
   await composer.fill('A draft that must stay here.');
   await page.getByRole('button',{name:/Settings/}).first().click();
   await page.getByRole('dialog').waitFor();
-  if(await page.locator('#model').inputValue() !== 'qwen3.5:4b') throw Error('Unexpected main model');
+  await page.getByText('MacBot 4B', {exact:true}).waitFor();
+  const thinking = page.locator('#reasoning-level');
+  if (await thinking.locator('option').allTextContents().then(values => values.join(',')) !== 'Low,Medium,High') throw Error('Unexpected reasoning levels');
+  await thinking.selectOption('low');
   await page.getByRole('heading',{name:'Connected tools'}).waitFor();
-  await page.getByRole('heading',{name:'Your creative voice'}).waitFor();
-  await page.keyboard.press('Escape');
+  await page.getByRole('heading',{name:'Thinking',exact:true}).waitFor();
+  await page.getByRole('button', {name:'Save settings', exact:true}).click();
+  await page.getByRole('dialog').waitFor({state:'hidden'});
+  if ((await request('/settings')).reasoning !== 'low') throw Error('Reasoning setting was not saved');
   if(await composer.inputValue() !== 'A draft that must stay here.') throw Error('Settings lost the draft');
   await composer.fill('Calculate 17 times 23. Reply only with the number.');
   let started = Date.now();
@@ -42,10 +47,9 @@ async (page) => {
   await request('/mcp/servers/workspace',{...workspace,enabled:true},'PUT');
   const inventory=await request('/mcp/servers/workspace/inspect',{});
   if(!inventory.tools.some(t=>t.name==='write_file'))throw Error('Built-in MCP tool discovery failed');
-  const persona=await request('/persona');
   const performance=[];
   for(let i=0;i<20;i++) {const t=Date.now();await request('/health');performance.push(Date.now()-t);}
   const sorted=performance.toSorted((a,b)=>a-b);
   if(errors.length) throw Error(errors.join('\n'));
-  return {native:true,chatSeconds,models:ready.models,layouts,tools:inventory.tools.map(t=>t.name),personaChecksPassed:persona.evaluation?.passed ?? null,healthP50Ms:sorted[10],healthP95Ms:sorted[18],errors};
+  return {native:true,chatSeconds,models:ready.models,layouts,tools:inventory.tools.map(t=>t.name),healthP50Ms:sorted[10],healthP95Ms:sorted[18],errors};
 }

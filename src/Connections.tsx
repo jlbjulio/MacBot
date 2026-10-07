@@ -52,7 +52,7 @@ export function Connections({ onError }: { onError: (message: string) => void })
       <h3>Your creative toolkit</h3>
       <p>Search text and media with EmbeddingGemma 2. Create images locally and record an English voice with Piper.</p>
       <div className="capability-list">{capability ? capability.models.map((model) => <div key={model.id}>
-        <span>{model.id === "embedding" ? "Multimodal search" : model.id === "image" ? "Image creation" : model.id === "voice" ? "Voice creation" : model.id === "persona" ? "Creative style" : model.id === "whisper" ? "Speech recognition" : "Evidence review"}</span>
+        <span>{model.id === "embedding" ? "Multimodal search" : model.id === "image" ? "Image creation" : model.id === "voice" ? "Voice creation" : model.id === "whisper" ? "Speech recognition" : "Evidence review"}</span>
         <small>{model.ready ? "Ready on this device" : "Downloads when needed"}</small>
       </div>) : <p role="status">Checking your models…</p>}</div>
       <p>Audio attachments stay in the conversation. Dictation turns speech into an editable message. Video analysis uses sampled frames.</p>

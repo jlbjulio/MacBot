@@ -99,17 +99,6 @@ def test_report_abstains_without_supported_claims():
     assert "could not establish" in render_report([], 2)
 
 
-def test_style_guard_checks_numeric_meaning_and_uncertainty():
-    from macbot.persona import preserves
-    assert preserves("Tuesday at 09:15.", "Tuesday at 9:15.")
-    assert preserves("I cannot confirm 37 items.", "I can’t confirm 37 items.")
-    assert not preserves("There are 37 items.", "There are 137 items.")
-    assert not preserves("The value is 17.", "The value is 17, plus 9.")
-    assert not preserves("I cannot confirm this.", "I can confirm this.")
-    assert not preserves("Evidence [D2].", "Evidence [D3].")
-    assert not preserves("Julio saved Seaside.", "Julio saved Harbor.")
-
-
 def test_unicode_pdf_and_presentation_ingestion(tmp_path):
     from macbot.documents import extract, export_document
     path = tmp_path / "unicode.pdf"

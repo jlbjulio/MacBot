@@ -484,11 +484,6 @@ pub fn ensure(
         state.step(&format!("Checking existing {}", engine.name));
         state.phase("verifying", 0, 0, "");
         let mut candidates = Vec::new();
-        if engine.name == "ollama" {
-            if let Some(base) = std::env::var_os("LOCALAPPDATA") {
-                candidates.push(PathBuf::from(base).join("Programs/Ollama"));
-            }
-        }
         if engine.name == "node" {
             for base in ["ProgramFiles", "LOCALAPPDATA"] {
                 if let Some(base) = std::env::var_os(base) {
@@ -597,10 +592,16 @@ pub fn ensure(
             }
         }
     }
+    for legacy in ["ollama-model.json", "macbot/persona.py"] {
+        let file = target(&python.join("app"), legacy)?;
+        if file.exists() {
+            fs::remove_file(file).map_err(|e| e.to_string())?;
+        }
+    }
     for folder in [
         &python,
         &root.join("runtime/node"),
-        &root.join("runtime/ollama"),
+        &root.join("runtime/llama"),
     ] {
         for file in fs::read_dir(root).map_err(|e| e.to_string())? {
             let file = file.map_err(|e| e.to_string())?;
@@ -628,7 +629,9 @@ pub fn ready(root: &Path) -> bool {
         "python/Lib/site-packages/torch/__init__.py",
         "python/Lib/site-packages/piper/__init__.py",
         "node/node.exe",
-        "ollama/ollama.exe",
+        "python/app/chat-model.json",
+        "python/Lib/site-packages/transformers/__init__.py",
+        "llama/llama-server.exe",
     ]
     .iter()
     .all(|p| root.join("runtime").join(p).is_file())

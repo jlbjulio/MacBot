@@ -184,22 +184,19 @@ class Setup:
         self.state = {"status": "waiting", "model": "", "completed": 0, "total": 0, "file": "", "error": "",
                       "reused_bytes": 0, "failures": {}}
         self.task: asyncio.Task[None] | None = None
-        self.manifest = json.loads((Path(__file__).resolve().parents[1] / "ollama-model.json").read_text()) if (Path(__file__).resolve().parents[1] / "ollama-model.json").exists() else None
+        self.manifest = json.loads((Path(__file__).resolve().parents[1] / "chat-model.json").read_text()) if (Path(__file__).resolve().parents[1] / "chat-model.json").exists() else None
 
     def chat_ready(self):
-        root = self.directory / "models/ollama"
-        if not self.manifest:
-            return False
-        manifest = root / "manifests/registry.ollama.ai/library/qwen3.5/4b"
+        root = self.directory / "models/chat"
         try:
-            if json.loads(manifest.read_text()) != self.manifest:
+            marker = json.loads((root / "macbot-model.json").read_text(encoding="utf-8"))
+            if not self.manifest or marker != self.manifest:
                 return False
-        except (OSError, ValueError):
+            return all((root / item["path"]).resolve().is_relative_to(root.resolve())
+                and (root / item["path"]).is_file() and (root / item["path"]).stat().st_size == item["size"]
+                for item in self.manifest["files"])
+        except (OSError, ValueError, KeyError, TypeError):
             return False
-        return all(
-            (root / "blobs" / item["digest"].replace(":", "-")).is_file() and
-            (root / "blobs" / item["digest"].replace(":", "-")).stat().st_size == item["size"]
-            for item in [self.manifest["config"], *self.manifest["layers"]])
 
     def status(self):
         ready = {"chat": self.chat_ready(), **{name: asset_ready(self.directory, name) for name in CORE}}
@@ -211,7 +208,7 @@ class Setup:
             state["failures"] = {}
         return {**state, "models": [{"id": name, "name": LABELS[name], "ready": value} for name, value in ready.items()],
                 "capabilities": {feature: all(ready[name] for name in names) for feature, names in DEPENDENCIES.items()},
-                "directory": str(self.directory), "download_sources": ["Hugging Face", "Ollama model registry"]}
+                "directory": str(self.directory), "download_sources": ["Hugging Face"]}
 
     def reused(self, size):
         with self.lock:
@@ -222,29 +219,36 @@ class Setup:
             self.state.update(model=LABELS.get(name, name), completed=completed, total=total, file=filename)
 
     def download_chat(self):
+        from huggingface_hub import hf_hub_url, try_to_load_from_cache
         if self.chat_ready():
             return
         if not self.manifest:
-            raise ValueError("The portable chat manifest is missing. Download a complete MacBot release.")
-        root = self.directory / "models/ollama"
-        items = [self.manifest["config"], *self.manifest["layers"]]
+            raise ValueError("The portable model manifest is missing. Download a complete MacBot release.")
+        root = self.directory / "models/chat"
+        items = self.manifest["files"]
         total, finished = sum(item["size"] for item in items), 0
-        caches = [Path.home() / ".ollama/models"]
-        for variable in ("MACBOT_EXISTING_OLLAMA_MODELS", "OLLAMA_MODELS"):
+        repo, revision = self.manifest["repo"], self.manifest["revision"]
+        caches = {Path.home() / ".cache/huggingface/hub", self.directory / "cache/huggingface/hub"}
+        for variable in ("MACBOT_EXISTING_HF_CACHE", "HF_HUB_CACHE"):
             if os.environ.get(variable):
-                caches.append(Path(os.environ[variable]))
+                caches.add(Path(os.environ[variable]))
         for item in items:
-            digest = item["digest"]
-            download_file("https://registry.ollama.ai/v2/library/qwen3.5/blobs/" + digest,
-                          root / "blobs" / digest.replace(":", "-"), item["size"], digest.split(":", 1)[1],
-                          lambda done, size: self.update("chat", finished + done, total, "Chat model weights"), self.stop,
-                          candidates=[cache / "blobs" / digest.replace(":", "-") for cache in caches], reused=self.reused)
+            path = (root / item["path"]).resolve()
+            if not path.is_relative_to(root.resolve()):
+                raise ValueError("The chat manifest contains an invalid file path.")
+            candidates = []
+            for cache in caches:
+                cached = try_to_load_from_cache(repo, item["path"], revision=revision, cache_dir=str(cache))
+                if isinstance(cached, str):
+                    candidates.append(cached)
+            download_file(hf_hub_url(repo, item["path"], revision=revision), path,
+                item["size"], item["digest"],
+                lambda done, size: self.update("chat", finished + done, total, "Chat model weights"),
+                self.stop, git_blob=item["git_blob"], candidates=candidates, reused=self.reused)
             finished += item["size"]
-        manifest = root / "manifests/registry.ollama.ai/library/qwen3.5/4b"
-        manifest.parent.mkdir(parents=True, exist_ok=True)
-        temporary = manifest.with_suffix(".partial")
+        temporary = root / "macbot-model.json.partial"
         temporary.write_text(json.dumps(self.manifest), encoding="utf-8")
-        temporary.replace(manifest)
+        temporary.replace(root / "macbot-model.json")
 
     async def run(self, service):
         with self.lock:

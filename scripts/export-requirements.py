@@ -1,4 +1,4 @@
-"""Export hashed Windows dependencies without allowing GPU wheel substitution."""
+"""Export hashed Windows dependencies without allowing Torch wheel substitution."""
 import hashlib
 import json
 import re
@@ -18,19 +18,24 @@ def export():
         "--emit-index-url", "--output-file", str(destination), "--quiet",
     ], check=True, capture_output=True)
     lock = tomllib.loads((ROOT / "backend/uv.lock").read_text(encoding="utf-8"))
-    torch = next(package for package in lock["package"]
-                 if package["name"] == "torch" and package["version"].endswith("+cpu"))
-    wheel = next(wheel for wheel in torch["wheels"]
-                 if "cp311-cp311-win_amd64.whl" in wheel["url"])
     text = destination.read_text(encoding="utf-8")
     text = re.sub(r"^--extra-index-url .*\n", "", text, flags=re.MULTILINE)
-    text, count = re.subn(
-        r"^torch==[^\n]*\+cpu[^\n]*\n(?:    --hash=[^\n]*\n)+",
-        lambda _: f"torch @ {wheel['url']} \\\n    --hash={wheel['hash']}\n",
-        text, flags=re.MULTILINE,
-    )
-    if count != 1:
-        raise RuntimeError("The locked Windows CPU Torch requirement was not found exactly once.")
+    for name in ("torch", "torchvision"):
+        package = next(package for package in lock["package"] if package["name"] == name
+                       and any("cp311-cp311-win_amd64.whl" in wheel["url"] for wheel in package.get("wheels", [])))
+        if package["source"].get("registry") != "https://download.pytorch.org/whl/cpu":
+            raise RuntimeError("The locked Torch build must be CPU-only; llama.cpp handles chat acceleration.")
+        wheel = next(wheel for wheel in package["wheels"]
+                     if "cp311-cp311-win_amd64.whl" in wheel["url"])
+        replacement = f"{name} @ {wheel['url']} \\\n    --hash={wheel['hash']}\n"
+        text, count = re.subn(
+            rf"^{name}==[^\n]*\n(?:    --hash=[^\n]*\n)+",
+            "",
+            text, flags=re.MULTILINE,
+        )
+        if not count:
+            raise RuntimeError(f"The locked Windows {name} requirement was not found.")
+        text += replacement
     destination.write_text(text, encoding="utf-8", newline="\n")
     pins = ROOT / "bootstrap/engines.json"
     manifest = json.loads(pins.read_text(encoding="utf-8"))

@@ -1,5 +1,6 @@
 """Validated design choices shared by generated documents and presentations."""
 import re
+from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import Literal, cast
@@ -25,6 +26,32 @@ class Theme(BaseModel):
         return self
 
 
+def requested_theme(value, request):
+    theme = Theme.model_validate(value)
+    palette = {"purple": "674183", "blue": "285F9C", "green": "28634A", "teal": "236B70",
+               "red": "A93636", "orange": "B8682D", "pink": "BA5B86", "yellow": "C89D28",
+               "navy": "182F50", "cream": "F5F1E8", "beige": "EDE2CD", "white": "FFFFFF",
+               "black": "151515", "gray": "777777", "grey": "777777"}
+    if re.search(r"\b(?:theme|palette|colou?rs?|background|accent)\b", request, re.I):
+        names = re.findall(r"\b(?:" + "|".join(palette) + r")\b", request, re.I)
+        neutral = {"cream", "beige", "white", "black"}
+        background = next((name.lower() for name in names if name.lower() in neutral), None)
+        accent = next((name.lower() for name in names if name.lower() not in neutral), None)
+        if background:
+            theme.background = palette[background]
+        if accent:
+            theme.accent = palette[accent]
+    for role in ("background", "foreground", "accent"):
+        explicit = re.search(r"\b" + role + r"\s*(?:colou?r\s*)?(?:[:=]|is)?\s*#([0-9a-f]{6})\b", request, re.I)
+        if explicit:
+            setattr(theme, role, explicit[1].upper())
+    font = re.search(r"\b(Calibri|Arial|Georgia|Aptos|Verdana)\b", request, re.I)
+    if font:
+        theme.font = next(name for name in ("Calibri", "Arial", "Georgia", "Aptos", "Verdana")
+                          if name.lower() == font[1].lower())
+    return Theme.model_validate(theme.model_dump()).model_dump()
+
+
 class Table(BaseModel):
     columns: list[str] = Field(min_length=1, max_length=8)
     rows: list[list[str | int | float | None]] = Field(max_length=40)
@@ -48,6 +75,109 @@ class DocumentSpec(BaseModel):
     sections: list[Section] = Field(min_length=1, max_length=20)
 
 
+@dataclass
+class DocumentBlock:
+    kind: Literal["paragraph", "bullet", "number", "heading", "table"]
+    text: str = ""
+    table: Table | None = None
+
+
+def document_blocks(text: str) -> list[DocumentBlock]:
+    """Keep model-supplied Markdown usable when it lands in a text field."""
+    blocks: list[DocumentBlock] = []
+    lines = text.splitlines()
+    paragraph: list[str] = []
+
+    def flush():
+        if paragraph:
+            blocks.append(DocumentBlock("paragraph", "\n".join(paragraph)))
+            paragraph.clear()
+
+    def cells(line: str) -> list[str]:
+        return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip()
+        if ("|" in line and index + 1 < len(lines)
+                and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells(lines[index + 1]))
+                and len(cells(line)) == len(cells(lines[index + 1]))):
+            flush()
+            columns, rows = cells(line), []
+            index += 2
+            while index < len(lines) and "|" in lines[index]:
+                row = cells(lines[index])
+                if len(row) != len(columns):
+                    break
+                rows.append(row)
+                index += 1
+            blocks.append(DocumentBlock("table", table=Table(columns=columns, rows=rows)))
+            continue
+        bullet = re.match(r"^[-*+]\s+(.+)", line)
+        number = re.match(r"^\d+[.)]\s+(.+)", line)
+        heading = re.match(r"^#{1,6}\s+(.+)", line)
+        if not line or bullet or number or heading:
+            flush()
+            if bullet:
+                blocks.append(DocumentBlock("bullet", bullet[1]))
+            elif number:
+                blocks.append(DocumentBlock("number", number[1]))
+            elif heading:
+                blocks.append(DocumentBlock("heading", heading[1]))
+        else:
+            paragraph.append(line)
+        index += 1
+    flush()
+    return blocks
+
+
+def prepare_document(value, request):
+    spec = DocumentSpec.model_validate(value)
+    if re.search(r"\bletter\s+(?:paper|page|size)|\b(?:paper|page)\s+(?:size\s+)?letter\b", request, re.I):
+        spec.paper = "LETTER"
+    if re.search(r"\b(?:no|without)\s+(?:a\s+)?(?:cover|title page)\b", request, re.I):
+        spec.cover = False
+    intent = re.sub(r"\btable of contents\b", "", request, flags=re.I)
+    if (not re.search(r"\b(?:tables?|tablas?)\b", intent, re.I)
+            or re.search(r"\b(?:no|without|avoid|sin)\s+(?:any\s+)?(?:tables?|tablas?)\b", intent, re.I)):
+        return spec.model_dump()
+    if any(section.table or any(block.kind == "table" for block in document_blocks(section.text))
+           for section in spec.sections):
+        return spec.model_dump()
+    timeline = bool(re.search(r"\b(?:timeline|schedule|cronograma|calendario)\b", intent, re.I))
+    section = next((section for section in spec.sections
+                    if timeline and re.search(r"timeline|schedule|cronograma|calendario", section.heading, re.I)),
+                   next((section for section in reversed(spec.sections) if section.bullets), spec.sections[-1]))
+    if section.bullets:
+        rows = []
+        for index, bullet in enumerate(section.bullets, 1):
+            label, separator, detail = bullet.partition(":")
+            rows.append([label.strip(), detail.strip()] if separator else [str(index), bullet])
+        section.table = Table(columns=["Period" if timeline else "Item", "Details"], rows=rows)
+        section.bullets = []
+    else:
+        # Reformat planned content without inventing dates, figures or extra facts.
+        section.table = Table(columns=["Section", "Details"], rows=[[section.heading, section.text]])
+        section.text = ""
+    return spec.model_dump()
+
+
+def inline_parts(text: str):
+    for part in re.split(r"(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\*[^*]+\*)", text):
+        if not part:
+            continue
+        bold = part.startswith(("**", "__")) and len(part) > 4
+        italic = part.startswith("*") and not bold and len(part) > 2
+        code = part.startswith("`") and len(part) > 2
+        yield part[2:-2] if bold else part[1:-1] if italic or code else part, bold, italic
+
+
+def pdf_inline(text: str) -> str:
+    return "".join(("<b>" + escape(part) + "</b>" if bold else
+                    "<i>" + escape(part) + "</i>" if italic else escape(part))
+                   for part, bold, italic in inline_parts(text)).replace("\n", "<br/>")
+
+
 def shade(cell, color):
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
@@ -63,6 +193,17 @@ def write_document(value, path, fmt):
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     spec = DocumentSpec.model_validate(value)
+    cover_sections = [section for section in spec.sections if spec.cover and len(spec.sections) > 1
+                      and section.heading.strip().lower() in {"title page", "cover", "cover page"}]
+    sections = [section for section in spec.sections if section not in cover_sections]
+
+    def section_blocks(section: Section):
+        blocks = document_blocks(section.text)
+        blocks.extend(DocumentBlock("bullet", bullet) for bullet in section.bullets)
+        if section.table:
+            blocks.append(DocumentBlock("table", table=section.table))
+        return blocks
+
     if fmt == "docx":
         doc = Document()
         page = doc.sections[0]
@@ -86,11 +227,17 @@ def write_document(value, path, fmt):
         doc.add_heading(spec.title, 0)
         if spec.subtitle:
             doc.add_paragraph(spec.subtitle, "Subtitle")
+        def word_text(paragraph, text):
+            for part, bold, italic in inline_parts(text):
+                run = paragraph.add_run(part)
+                run.bold, run.italic = bold, italic
+
         if spec.cover:
-            doc.add_paragraph("CREATED FOR YOUR NEXT IDEA").runs[0].font.size = Pt(9)
-            if len(spec.sections) > 2:
+            for section in cover_sections:
+                word_text(doc.add_paragraph(), section.text)
+            if len(sections) > 2:
                 doc.add_heading("Inside", 2)
-                for section in spec.sections:
+                for section in sections:
                     doc.add_paragraph(section.heading, "List Bullet")
             doc.add_page_break()
         page.header.paragraphs[0].text = spec.title[:90]
@@ -99,27 +246,28 @@ def write_document(value, path, fmt):
         field = OxmlElement("w:fldSimple")
         field.set(qn("w:instr"), "PAGE")
         footer_paragraph._p.append(field)
-        for section in spec.sections:
+        for section in sections:
             doc.add_heading(section.heading, 1)
-            for paragraph in section.text.split("\n\n"):
-                if paragraph.strip():
-                    doc.add_paragraph(paragraph.strip())
-            for bullet in section.bullets:
-                doc.add_paragraph(bullet, "List Bullet")
-            if section.table:
-                table = doc.add_table(rows=1, cols=len(section.table.columns))
+            for block in section_blocks(section):
+                if block.kind != "table":
+                    style = {"bullet": "List Bullet", "number": "List Number", "heading": "Heading 2"}.get(block.kind)
+                    word_text(doc.add_paragraph(style=style), block.text)
+                    continue
+                assert block.table is not None
+                data = block.table
+                table = doc.add_table(rows=1, cols=len(data.columns))
                 table.style = "Table Grid"
-                for cell, heading in zip(table.rows[0].cells, section.table.columns):
-                    cell.text = heading
+                for cell, heading in zip(table.rows[0].cells, data.columns):
+                    word_text(cell.paragraphs[0], heading)
                     shade(cell, spec.theme.accent)
                     for run in cell.paragraphs[0].runs:
                         run.bold = True
                         run.font.color.rgb = RGBColor.from_string(Theme(background=spec.theme.accent, foreground="FFFFFF").foreground)
-                for number, row in enumerate(section.table.rows):
-                    if len(row) != len(section.table.columns):
+                for number, row in enumerate(data.rows):
+                    if len(row) != len(data.columns):
                         raise ValueError("Document table rows must match their columns.")
                     for cell, item in zip(table.add_row().cells, row):
-                        cell.text = str(item) if item is not None else ""
+                        word_text(cell.paragraphs[0], str(item) if item is not None else "")
                         if number % 2 == 0:
                             shade(cell, spec.theme.background)
                             for run in cell.paragraphs[0].runs:
@@ -143,6 +291,16 @@ def write_document(value, path, fmt):
         font = "MacBotText" + installed_font.stem
         if font not in pdfmetrics.getRegisteredFontNames():
             pdfmetrics.registerFont(TTFont(font, str(installed_font)))
+        stems = {"calibri": ("calibrib", "calibrii", "calibriz"), "georgia": ("georgiab", "georgiai", "georgiaz"),
+                 "arial": ("arialbd", "ariali", "arialbi"), "verdana": ("verdanab", "verdanai", "verdanaz")}
+        variants = []
+        for stem in stems.get(installed_font.stem.lower(), ("", "", "")):
+            variant = installed_font.with_name(stem + ".ttf")
+            name = font + stem if variant.is_file() else font
+            if name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(name, str(variant)))
+            variants.append(name)
+        pdfmetrics.registerFontFamily(font, normal=font, bold=variants[0], italic=variants[1], boldItalic=variants[2])
     page_size = A4 if spec.paper == "A4" else LETTER
     if spec.orientation == "landscape":
         page_size = landscape(page_size)
@@ -155,22 +313,26 @@ def write_document(value, path, fmt):
     if spec.subtitle:
         elements.append(Paragraph(escape(spec.subtitle), body))
     if spec.cover:
-        elements += [Spacer(1, 32), Paragraph("CREATED FOR YOUR NEXT IDEA", body)]
-        if len(spec.sections) > 2:
-            elements += [Paragraph("Inside", heading), *[Paragraph(escape(s.heading), body) for s in spec.sections]]
+        elements += [Paragraph(pdf_inline(section.text), body) for section in cover_sections]
+        if len(sections) > 2:
+            elements += [Paragraph("Inside", heading), *[Paragraph(escape(s.heading), body) for s in sections]]
         elements.append(PageBreak())
-    for section in spec.sections:
+    for section in sections:
         elements.append(Paragraph(escape(section.heading), heading))
-        elements += [Paragraph(escape(p.strip()), body) for p in section.text.split("\n\n") if p.strip()]
-        elements += [Paragraph("• " + escape(b), body) for b in section.bullets]
-        if section.table:
+        for block in section_blocks(section):
+            if block.kind != "table":
+                prefix = "• " if block.kind == "bullet" else "– " if block.kind == "number" else ""
+                elements.append(Paragraph(prefix + pdf_inline(block.text), heading if block.kind == "heading" else body))
+                continue
+            assert block.table is not None
+            data = block.table
             tinted = ParagraphStyle("TintedCell", parent=body, textColor=colors.HexColor("#" + spec.theme.foreground))
-            rows = [[Paragraph(escape(str(c)), tinted) for c in section.table.columns]]
-            for number, row in enumerate(section.table.rows):
-                if len(row) != len(section.table.columns):
+            rows = [[Paragraph(pdf_inline(str(c)), tinted) for c in data.columns]]
+            for number, row in enumerate(data.rows):
+                if len(row) != len(data.columns):
                     raise ValueError("Document table rows must match their columns.")
-                rows.append([Paragraph(escape(str(c) if c is not None else ""), tinted if number % 2 else body) for c in row])
-            table = PDFTable(rows, colWidths=[(page_size[0] - 110) / len(section.table.columns)] * len(section.table.columns), repeatRows=1)
+                rows.append([Paragraph(pdf_inline(str(c) if c is not None else ""), tinted if number % 2 else body) for c in row])
+            table = PDFTable(rows, colWidths=[(page_size[0] - 110) / len(data.columns)] * len(data.columns), repeatRows=1)
             table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + spec.theme.background)),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#" + spec.theme.background)]),
                 ("LINEBELOW", (0, 0), (-1, 0), 1.2, accent), ("VALIGN", (0, 0), (-1, -1), "TOP"),

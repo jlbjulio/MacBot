@@ -3,7 +3,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArtifactView, ReadAloud } from "./Artifacts";
 import { Connections } from "./Connections";
-import { Persona } from "./Persona";
 import { SetupScreen, usePreparation } from "./Setup";
 import { Privacy } from "./Privacy";
 import {
@@ -43,6 +42,7 @@ type Mode = "chat" | "research" | "image" | "audio" | "spreadsheet" | "presentat
 type Upload = { id: string; name: string; kind: string };
 type Config = {
   model: string;
+  reasoning: "low" | "medium" | "high";
   whisper_model: "tiny" | "base" | "small";
   language: "es" | "en" | "auto";
 };
@@ -51,7 +51,8 @@ type ModelStatus = {
   models: { name: string; size: number }[];
 };
 const initialConfig: Config = {
-  model: "qwen3.5:4b",
+  model: "macbot-4b",
+  reasoning: "medium",
   whisper_model: "base",
   language: "en",
 };
@@ -100,8 +101,6 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadStage, setDownloadStage] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -225,6 +224,7 @@ export default function App() {
           prompt: text,
           mode,
           model: config.model,
+          reasoning: config.reasoning,
           uploads: uploads.map((upload) => upload.id),
         }),
       });
@@ -407,33 +407,6 @@ export default function App() {
       setError((err as Error).message);
     } finally {
       setSaving(false);
-    }
-  }
-  async function downloadModel() {
-    setDownloading(true);
-    setError("");
-    setDownloadStage("Preparing download");
-    try {
-      const result = await api<{ id: string }>("/models/download", {
-        method: "POST",
-        body: JSON.stringify({ model: settingsConfig.model }),
-      });
-      await streamRun(
-        result.id,
-        (event) => {
-          if (event.type === "stage")
-            setDownloadStage(event.label ?? "Downloading");
-          if (event.type === "error")
-            setError(event.message ?? "The download could not be completed.");
-        },
-        new AbortController().signal,
-      );
-      setModels(await api<ModelStatus>("/models"));
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setDownloading(false);
-      setDownloadStage("");
     }
   }
   const hasConversation = messages.length > 0 || busy;
@@ -905,54 +878,22 @@ export default function App() {
           <p>
             Your models run on this device. No paid model APIs.
           </p>
-          <label htmlFor="model">Local model</label>
-          <input
-            id="model"
-            list="installed-models"
-            value={settingsConfig.model}
-            onChange={(event) =>
-              setSettingsConfig({
-                ...settingsConfig,
-                model: event.target.value,
-              })
-            }
-          />
-          <datalist id="installed-models">
-            {models.models.map((model) => (
-              <option key={model.name} value={model.name} />
-            ))}
-          </datalist>
-          {["qwen3.5:4b", "qwen3.5:9b"].includes(settingsConfig.model) &&
-            !models.models.some(
-              (model) => model.name === settingsConfig.model,
-            ) && (
-              <button
-                className="save-button model-download"
-                disabled={downloading || !models.available || (settingsConfig.model === "qwen3.5:4b" && !ready("chat"))}
-                onClick={() => void downloadModel()}
-              >
-                <Download size={15} />
-                {downloading ? downloadStage : "Download local model"}
-              </button>
-            )}
-          {settingsConfig.model === "qwen3.5:4b" && !ready("chat") && <p>The chat model is unavailable. Restart MacBot to repair its local downloads.</p>}
+          <p>MacBot 4B</p>
           <div className="connection-status">
-            <span
-              className={models.available ? "status-dot" : "status-dot offline"}
-            />
-            {models.available
-              ? `${models.models.length} local models available`
-              : "Ollama is unavailable"}
+            <span className={models.available ? "status-dot" : "status-dot offline"} />
+            {models.available ? "Ready on this PC" : "Preparation needed"}
           </div>
-          <p className="model-guidance">
-            4B is a comfortable starting point. 9B needs more memory and may respond more slowly.
-          </p>
-          <p>MacBot includes its local model runtime. Choose a model below, then download it here if needed.</p>
-          <div className="model-options">
-            {(["qwen3.5:4b", "qwen3.5:9b"] as const).map(model => <button key={model}
-              aria-pressed={settingsConfig.model === model}
-              onClick={() => setSettingsConfig({...settingsConfig, model})}>{model === "qwen3.5:4b" ? "Choose 4B" : "Choose 9B"}</button>)}
-          </div>
+        </div>
+        <div className="settings-section">
+          <h3>Thinking</h3>
+          <label htmlFor="reasoning-level">Reasoning level</label>
+          <select id="reasoning-level" value={settingsConfig.reasoning}
+            onChange={(event) => setSettingsConfig({ ...settingsConfig,
+              reasoning: event.target.value as Config["reasoning"] })}>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
         </div>
         <div className="settings-section">
           <h3>Speech to text</h3>
@@ -1000,7 +941,7 @@ export default function App() {
             Dictation records up to two minutes. Audio files support up to ten minutes and 20 MB. Your recordings are processed locally.
           </p>
         </div>
-        {settings && <><Connections onError={setError} /><Persona onError={setError} /><Privacy active={active} onError={setError} onChange={() => {setSettings(false); newChat(); void refresh();}} /></>}
+        {settings && <><Connections onError={setError} /><Privacy active={active} onError={setError} onChange={() => {setSettings(false); newChat(); void refresh();}} /></>}
         <div className="dialog-footer">
           <button
             className="text-button"

@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import json
-import re
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -15,6 +14,7 @@ class State(TypedDict, total=False):
     prompt: str
     mode: str
     model: str
+    reasoning: str
     chat_id: str
     uploads: list[str]
     queries: list[str]
@@ -28,7 +28,7 @@ class State(TypedDict, total=False):
 
 def build_graph(runtime, store, emit, retrieval=None, checkpointer=None):
     async def chat(state):
-        emit({"type": "stage", "label": "MacBot is responding", "agent": "conversation"})
+        emit({"type": "stage", "label": "Thinking", "agent": "conversation"})
         messages: list[dict[str, Any]] = [{"role": "system", "content": PERSONALITY}]
         history = store.messages(state["chat_id"])
         selected, remaining = [], 4000
@@ -117,13 +117,6 @@ def build_graph(runtime, store, emit, retrieval=None, checkpointer=None):
             emit({"type": "token", "text": token})
         if not answer.strip():
             raise ValueError("The model returned an empty response.")
-        if store.setting("persona_enabled", False) and not upload_ids and len(answer) <= 500 and not re.search(r"```|\[\d|\[D\d|https?://", answer):
-            from .persona import rewrite
-            await runtime.unload(state["model"])
-            emit({"type": "stage", "label": "Applying your creative voice", "agent": "persona"})
-            answer = await asyncio.to_thread(rewrite, store.directory, answer)
-            emit({"type": "reset"})
-            emit({"type": "token", "text": answer})
         return {"answer": answer, "sources": sources}
 
     async def create(state):
