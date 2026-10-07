@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep the checksum-pinned dependency file byte-for-byte across checkouts.
+bootstrap/requirements.txt -text

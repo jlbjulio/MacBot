@@ -1,0 +1,12 @@
+{
+  "include": ["backend/macbot", "backend/tests", "backend/desktop_entry.py", "scripts"],
+  "exclude": [
+    "**/.venv", "**/__pycache__", "node_modules", "build", "dist", "release", "logs",
+    "backend/data", "Data", "runtime", "src-tauri/target", "src-tauri/gen", ".playwright-cli"
+  ],
+  "extraPaths": ["backend"],
+  "venvPath": "backend",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "Windows"
+}

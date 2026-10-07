@@ -1,0 +1,26 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+  "python.analysis.typeCheckingMode": "basic",
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.venv/**": true,
+    "**/__pycache__/**": true,
+    "**/build/**": true,
+    "**/dist/**": true,
+    "**/release/**": true,
+    "**/logs/**": true,
+    "**/backend/data/**": true,
+    "**/src-tauri/target/**": true,
+    "**/src-tauri/gen/**": true
+  },
+  "search.exclude": {
+    "build": true,
+    "dist": true,
+    "release": true,
+    "logs": true,
+    "backend/data": true,
+    "src-tauri/target": true,
+    "src-tauri/gen": true
+  },
+  "markdownlint.config": {"MD013": false}
+}
