@@ -1,5 +1,4 @@
 {
-  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}/MacBot/Development/Python/Scripts/python.exe",
   "python.analysis.typeCheckingMode": "basic",
   "files.watcherExclude": {
     "**/node_modules/**": true,
