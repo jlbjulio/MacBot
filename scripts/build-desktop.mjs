@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 
 const require = createRequire(import.meta.url);
-const pythonEnvironment = process.env.UV_PROJECT_ENVIRONMENT || join(process.env.LOCALAPPDATA || homedir(), "MacBot/Development/Python");
+const pythonEnvironment = resolve(process.env.UV_PROJECT_ENVIRONMENT || join(process.env.LOCALAPPDATA || homedir(), "MacBot/Development/Python"));
 const python = join(pythonEnvironment, "Scripts/python.exe");
 if (process.platform !== "win32" || process.arch !== "x64") {
   throw new Error("MacBot desktop builds require Windows x64.");
@@ -17,9 +17,18 @@ if (process.platform !== "win32" || process.arch !== "x64") {
 mkdirSync("logs", { recursive: true });
 const env = {
   ...process.env,
+  UV_PROJECT_ENVIRONMENT: pythonEnvironment,
   PATH: `${join(homedir(), ".cargo", "bin")};${process.env.PATH}`,
   CARGO_BUILD_JOBS: "1",
 };
+const environmentLog = openSync("logs/python-environment.log", "w");
+const environment = spawnSync("uv", ["sync", "--locked", "--directory", "backend", "--extra", "dev", "--python", "3.11"], {
+  env, stdio: ["ignore", environmentLog, environmentLog], windowsHide: true,
+});
+if (environment.status !== 0) {
+  console.error("Python environment preparation failed. See logs/python-environment.log", environment.error?.message || "");
+  process.exit(environment.status ?? 1);
+}
 const runtimeLog = openSync("logs/portable-payload.log", "w");
 const runtime = spawnSync(python, ["scripts/prepare-portable.py"], {
   env, stdio: ["ignore", runtimeLog, runtimeLog], windowsHide: true,

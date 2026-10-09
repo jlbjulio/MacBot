@@ -47,14 +47,17 @@ The default chat model is **Qwen3.5 4B**, using Unsloth's Q4_K_M GGUF with llama
 
 ## Build the portable
 
-Use Windows x64 with Node.js 22+, Python 3.11, uv 0.12.21, Rust/MSVC, and Visual Studio 2022 Build Tools with C++ and the Windows SDK.
+Use Windows x64 with Node.js 22+, Python 3.11, uv, Rust/MSVC, and Visual Studio 2022 Build Tools with C++ and the Windows SDK.
 
 ```powershell
 npm ci
 $env:UV_PROJECT_ENVIRONMENT = Join-Path $env:LOCALAPPDATA "MacBot/Development/Python"
-uv sync --locked --directory backend --extra dev --python 3.11
 npm run build:desktop
 & "$env:UV_PROJECT_ENVIRONMENT/Scripts/python.exe" scripts/package-portable.py
 ```
+
+The desktop build creates or synchronizes the isolated Python environment using `backend/uv.lock` before preparing the portable. Its log is `logs/python-environment.log`; existing workspace data is kept outside that environment.
+
+Portable packaging validates uv against the hash in `bootstrap/engines.json`. It reuses the matching binary in the portable, `build/tools/uv.exe`, or PATH, so updating global uv does not require downgrading it. A fresh checkout needs the pinned executable in `build/tools/uv.exe` or a matching uv on PATH.
 
 The ZIP is created in **release/**. Upload it as the single download in a GitHub Release. Models, personal data and build output are excluded from the source repository.

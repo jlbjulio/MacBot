@@ -17,6 +17,20 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def resolve_uv(manifest):
+    candidates = [TARGET / "uv.exe", ROOT / "build/tools/uv.exe"]
+    system_uv = shutil.which("uv")
+    if system_uv:
+        candidates.append(Path(system_uv))
+    for candidate in candidates:
+        if candidate.is_file() and digest(candidate) == manifest["uv_sha256"]:
+            return candidate
+    raise RuntimeError(
+        "No uv binary matches bootstrap/engines.json. Restore the pinned executable "
+        "in release/MacBot-Portable/MacBot/uv.exe or place it in build/tools/uv.exe."
+    )
+
+
 def prepare():
     TARGET.mkdir(parents=True, exist_ok=True)
     if TARGET.is_symlink() or TARGET.resolve().parent != PORTABLE.resolve():
@@ -39,11 +53,10 @@ def prepare():
                         alias.rmdir()
             shutil.move(existing, TARGET / existing.name)
     PAYLOAD.mkdir(parents=True, exist_ok=True)
-    uv = Path(shutil.which("uv") or "")
     manifest = json.loads((ROOT / "bootstrap/engines.json").read_text(encoding="utf-8"))
-    if not uv.is_file() or digest(uv) != manifest["uv_sha256"]:
-        raise RuntimeError("Install the pinned uv 0.12.21 build before packaging.")
-    shutil.copy2(uv, TARGET / "uv.exe")
+    uv = resolve_uv(manifest)
+    if uv.resolve() != (TARGET / "uv.exe").resolve():
+        shutil.copy2(uv, TARGET / "uv.exe")
     app = PAYLOAD / "app"
     (app / "macbot").mkdir(parents=True, exist_ok=True)
     for source in (ROOT / "backend/macbot").glob("*.py"):
