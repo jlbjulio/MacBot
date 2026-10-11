@@ -2,13 +2,13 @@ import gc
 import json
 import re
 import wave
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, Field, model_validator
 
 from .assets import VOICE_FILE, VOICE_PREFIX, prepare_asset
-from .design import Theme, DocumentSpec, requested_theme, write_document
+from .design import FONT_FILES, Table, Theme, DocumentSpec, readable_color, requested_theme, write_document
 
 
 class Chart(BaseModel):
@@ -39,6 +39,21 @@ class Sheet(BaseModel):
     formats: list[CellFormat] = Field(default_factory=list, max_length=20)
     charts: list[Chart] = Field(default_factory=list, max_length=3)
     notes: str = Field(default="", max_length=800)
+    header_style: Literal["filled", "accent", "minimal"] = "filled"
+    stripe_rows: bool = True
+    column_widths: list[Annotated[float, Field(ge=8, le=70)]] = Field(default_factory=list, max_length=20)
+    alignments: list[Literal["auto", "left", "center", "right"]] = Field(default_factory=list, max_length=20)
+    chart_placement: Literal["beside", "below", "dashboard"] = "beside"
+    chart_colors: list[Annotated[str, Field(pattern=r"^[0-9A-Fa-f]{6}$")]] = Field(default_factory=list, max_length=8)
+    print_orientation: Literal["portrait", "landscape"] = "landscape"
+
+    @model_validator(mode="after")
+    def column_design(self):
+        if self.column_widths and len(self.column_widths) != len(self.columns):
+            raise ValueError("Column widths must match the spreadsheet columns.")
+        if self.alignments and len(self.alignments) != len(self.columns):
+            raise ValueError("Alignments must match the spreadsheet columns.")
+        return self
 
 
 class SlideColumn(BaseModel):
@@ -46,23 +61,34 @@ class SlideColumn(BaseModel):
     text: str = Field(min_length=1, max_length=400)
 
 
+class SlideTable(Table):
+    columns: list[str] = Field(min_length=1, max_length=5)
+    rows: list[list[str | int | float | None]] = Field(min_length=1, max_length=6)
+
+
 class Slide(BaseModel):
     title: str = Field(max_length=150)
     bullets: list[str] = Field(max_length=8)
-    layout: Literal["cover", "split", "comparison", "timeline", "quote", "metric", "bullets"] = "bullets"
+    layout: Literal["cover", "split", "comparison", "timeline", "quote", "metric", "bullets", "cards", "section", "table"] = "bullets"
     subtitle: str = Field(default="", max_length=200)
     columns: list[SlideColumn] = Field(default_factory=list, max_length=3)
     metric_value: str = Field(default="", max_length=30)
     metric_label: str = Field(default="", max_length=100)
     notes: str = Field(default="", max_length=1500)
     image_id: str = Field(default="", max_length=80)
+    background: Literal["base", "accent", "contrast"] = "base"
+    table: SlideTable | None = None
 
     @model_validator(mode="after")
     def has_content(self):
-        if self.layout not in ("cover", "metric") and not self.bullets and not self.columns:
+        if self.layout not in ("cover", "metric", "section") and not self.bullets and not self.columns and not self.table:
             raise ValueError("Content slides need meaningful bullets or populated heading/text columns.")
         if self.layout == "metric" and not self.metric_value and not self.bullets:
             raise ValueError("A metric slide needs its supplied value and label.")
+        if self.layout == "table" and self.table is None:
+            raise ValueError("A table slide needs actual table data.")
+        if self.table and any(len(row) != len(self.table.columns) for row in self.table.rows):
+            raise ValueError("Slide table rows must match their columns.")
         return self
 
 
@@ -71,6 +97,7 @@ class Deck(BaseModel):
     slides: list[Slide] = Field(min_length=1, max_length=15)
     theme: Theme = Field(default_factory=Theme)
     subtitle: str = Field(default="", max_length=200)
+    aspect_ratio: Literal["16:9", "4:3"] = "16:9"
 
 
 def safe_cell(value):
@@ -110,6 +137,9 @@ def write_sheet(value, path):
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.worksheet.table import Table, TableStyleInfo
     from openpyxl.chart import BarChart, LineChart, PieChart, Reference
+    from openpyxl.chart.data_source import AxDataSource, StrRef
+    from openpyxl.chart.text import RichText
+    from openpyxl.drawing.text import CharacterProperties, Font as DrawingFont, Paragraph, ParagraphProperties
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.worksheet import Worksheet
     sheet = Sheet.model_validate(prepare_sheet(value))
@@ -122,58 +152,110 @@ def write_sheet(value, path):
         if len(row) != len(sheet.columns):
             raise ValueError("Every spreadsheet row must match its column count.")
         page.append([safe_cell(cell) for cell in row])
+    for number, column in enumerate(page.columns, start=1):
+        width = sheet.column_widths[number - 1] if sheet.column_widths else min(48, max(14, max(len(str(c.value or "")) for c in column) + 2))
+        page.column_dimensions[get_column_letter(number)].width = width
+    header_fill = sheet.theme.accent if sheet.header_style == "accent" else "FFFFFF" if sheet.header_style == "minimal" else sheet.theme.background
     for cell in page[1]:
-        cell.font = Font(name=sheet.theme.font, bold=True, color=sheet.theme.foreground)
-        cell.fill = PatternFill("solid", fgColor=sheet.theme.background)
+        cell.font = Font(name=sheet.theme.heading_face, size=sheet.theme.body_size + 1, bold=True,
+                         color=readable_color(sheet.theme.foreground, header_fill))
+        cell.fill = PatternFill("solid", fgColor=header_fill)
         cell.alignment = Alignment(vertical="center", wrap_text=True)
         cell.border = Border(bottom=Side(style="medium", color=sheet.theme.accent))
-    page.row_dimensions[1].height = 32
     formats = {"integer": "#,##0", "decimal": "#,##0.00", "percent": "0.0%", "usd": '"$"#,##0.00', "eur": '"€"#,##0.00', "date": "yyyy-mm-dd", "text": "@"}
     for row_number, row in enumerate(page.iter_rows(min_row=2), start=2):
+        fill = sheet.theme.background if sheet.stripe_rows and row_number % 2 == 0 else "FFFFFF"
         for column_number, cell in enumerate(row, start=1):
-            cell.font = Font(name=sheet.theme.font, size=11, color="203430")
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
-            if row_number % 2 == 0:
-                cell.fill = PatternFill("solid", fgColor="F3F5F2")
+            cell.font = Font(name=sheet.theme.font, size=sheet.theme.body_size,
+                             color=readable_color(sheet.theme.foreground, fill))
+            alignment = sheet.alignments[column_number - 1] if sheet.alignments else "auto"
+            if alignment == "auto":
+                alignment = "right" if isinstance(cell.value, (int, float)) else "left"
+            cell.alignment = Alignment(vertical="center", wrap_text=True, horizontal=alignment)
+            cell.fill = PatternFill("solid", fgColor=fill)
             if column_number <= len(sheet.formats):
                 cell.number_format = formats[sheet.formats[column_number - 1]]
-        page.row_dimensions[row_number].height = 24
+    import textwrap
+    padding = {"compact": 6, "comfortable": 10, "airy": 16}[sheet.theme.spacing]
+    for row in page:
+        lines = max(sum(max(1, len(textwrap.wrap(line, width=max(4, int(
+            page.column_dimensions[cell.column_letter].width * 11 / sheet.theme.body_size - 2)))))
+            for line in str(cell.value if cell.value is not None else "").split("\n")) for cell in row)
+        page.row_dimensions[row[0].row].height = min(409, max(24, lines * sheet.theme.body_size * 1.35 + padding))
     page.freeze_panes = "A2"
-    page.auto_filter.ref = page.dimensions
     if sheet.rows:
         table = Table(displayName="MacBotData", ref=page.dimensions)
-        table.tableStyleInfo = TableStyleInfo(showRowStripes=False)
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False,
+                                              showFirstColumn=False, showLastColumn=False, showColumnStripes=False)
         page.add_table(table)
-    for number, column in enumerate(page.columns, start=1):
-        page.column_dimensions[get_column_letter(number)].width = min(48, max(16, max(len(str(c.value or "")) for c in column) + 2))
+    else:
+        page.auto_filter.ref = page.dimensions
+    chart_page = book.create_sheet("Charts") if sheet.charts and sheet.chart_placement == "dashboard" else page
+    if chart_page is not page:
+        chart_page["A1"] = safe_cell(sheet.title)
+        chart_page["A1"].font = Font(name=sheet.theme.heading_face, size=sheet.theme.heading_size,
+                                    color=readable_color(sheet.theme.accent, "FFFFFF"), bold=True)
+        chart_page.sheet_view.showGridLines = False
     for number, specification in enumerate(sheet.charts):
         if specification.category_column > len(sheet.columns) or any(c < 1 or c > len(sheet.columns) for c in specification.value_columns):
             raise ValueError("Chart columns must refer to existing spreadsheet columns.")
         chart = {"bar": BarChart, "line": LineChart, "pie": PieChart}[specification.kind]()
         chart.title = specification.title or sheet.title
+        chart.title.overlay = False
         chart.style = 10
+        chart_font = CharacterProperties(latin=DrawingFont(typeface=sheet.theme.font),
+            sz=int(min(12, sheet.theme.body_size) * 100), solidFill=readable_color(sheet.theme.foreground, "FFFFFF"))
+        def chart_text():
+            return RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=chart_font), endParaRPr=chart_font)])
+        if specification.kind != "pie":
+            chart.x_axis.axPos, chart.y_axis.axPos = "b", "l"
+            for axis in (chart.x_axis, chart.y_axis):
+                axis.delete, axis.tickLblPos, axis.txPr = False, "nextTo", chart_text()
+            value_format = sheet.formats[specification.value_columns[0] - 1]
+            chart.y_axis.numFmt = "General" if value_format == "text" else formats[value_format]
+        if chart.legend is not None:
+            chart.legend.txPr = chart_text()
+            chart.legend.position, chart.legend.overlay = "b", False
         for column in specification.value_columns[:1] if specification.kind == "pie" else specification.value_columns:
             chart.add_data(Reference(page, min_col=column, min_row=1, max_row=len(sheet.rows) + 1), titles_from_data=True)
-        chart.set_categories(Reference(page, min_col=specification.category_column, min_row=2, max_row=len(sheet.rows) + 1))
+        categories = Reference(page, min_col=specification.category_column, min_row=2, max_row=len(sheet.rows) + 1)
+        chart.set_categories(categories)
+        if any(isinstance(row[specification.category_column - 1], str) for row in sheet.rows):
+            for series in chart.series:
+                series.cat = AxDataSource(strRef=StrRef(f=str(categories)))
+        palette = sheet.chart_colors or [sheet.theme.accent, sheet.theme.foreground]
+        for index, series in enumerate(chart.series):
+            color = palette[index % len(palette)]
+            series.graphicalProperties.solidFill = color
+            series.graphicalProperties.line.solidFill = color
+        if specification.kind == "pie":
+            from openpyxl.chart.series import DataPoint
+            for index in range(len(sheet.rows)):
+                point = DataPoint(idx=index)
+                point.graphicalProperties.solidFill = palette[index % len(palette)]
+                chart.series[0].data_points.append(point)
         chart.width, chart.height = 19, 10
-        page.add_chart(chart, anchor=f"{get_column_letter(len(sheet.columns) + 2)}{2 + number * 21}")
+        anchor = f"{get_column_letter(len(sheet.columns) + 2)}{2 + number * 21}" if sheet.chart_placement == "beside" else f"A{len(sheet.rows) + 4 + number * 22}" if sheet.chart_placement == "below" else f"A{4 + number * 22}"
+        chart_page.add_chart(chart, anchor=anchor)
     if sheet.notes:
         notes = book.create_sheet("Notes")
         notes["A1"], notes["A2"] = "About this workbook", safe_cell(sheet.notes)
-        notes["A1"].font = Font(name=sheet.theme.font, size=18, bold=True, color=sheet.theme.accent)
+        notes["A1"].font = Font(name=sheet.theme.heading_face, size=sheet.theme.heading_size, bold=True,
+                                color=readable_color(sheet.theme.accent, "FFFFFF"))
+        notes["A2"].font = Font(name=sheet.theme.font, size=sheet.theme.body_size)
         notes["A2"].alignment = Alignment(wrap_text=True, vertical="top")
         notes.column_dimensions["A"].width = 85
         notes.row_dimensions[2].height = 120
     page.sheet_view.showGridLines = False
     assert page.sheet_properties.pageSetUpPr is not None
     page.sheet_properties.pageSetUpPr.fitToPage = True
-    page.page_setup.orientation, page.page_setup.fitToWidth, page.page_setup.fitToHeight = "landscape", 1, 0
+    page.page_setup.orientation, page.page_setup.fitToWidth, page.page_setup.fitToHeight = sheet.print_orientation, 1, 0
     page.print_title_rows = "1:1"
     header, footer = page.oddHeader, page.oddFooter
     assert header is not None and footer is not None
     assert header.center is not None and footer.center is not None
-    header.center.text = sheet.title
-    footer.center.text = "MacBot · Page &P of &N"
+    header.center.text = sheet.title.replace("&", "&&")
+    footer.center.text = "Page &P of &N"
     book.save(path)
     checked = load_workbook(path, read_only=True)
     assert checked.active is not None and checked.active.max_row == len(sheet.rows) + 1
@@ -311,32 +393,41 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
         schema = Sheet if mode == "spreadsheet" else Deck if mode == "presentation" else DocumentSpec
         example = {"title": "Budget", "columns": ["Item", "Cost"], "rows": [["Coffee", 5]], "formats": ["text", "usd"],
             "charts": [{"kind": "bar", "title": "Costs", "category_column": 1, "value_columns": [2]}]} if mode == "spreadsheet" else {
-            "title": "Workshop", "theme": {"background": "F5F1E8", "foreground": "203430", "accent": "674183", "font": "Calibri"},
+            "title": "Workshop",
             "slides": [{"title": "Introduction", "layout": "cover", "subtitle": "Music together", "bullets": [], "notes": "Introduce the topic."},
                        {"title": "Compare options", "layout": "comparison", "columns": [{"heading": "Option A", "text": "First approach"}, {"heading": "Option B", "text": "Second approach"}], "bullets": []},
                        {"title": "A supplied figure", "layout": "metric", "metric_value": "30", "metric_label": "Participants", "bullets": []}]}
         if mode == "document":
             example = {"title": "Workshop guide", "format": "both", "sections": [{"heading": "Getting started", "text": "Bring your instrument and a notebook.", "bullets": []}]}
         instruction = "Create polished, useful file content and a coherent design based on the user's request. Honour colours, tone, structure, format and page preferences. "
+        instruction += ("Choose the visual direction for this particular audience and content before producing the JSON. "
+            "Select editorial, minimal, formal or bold style; an intentional palette; body and heading fonts; "
+            "body, heading and title point sizes; compact, comfortable or airy spacing; and line spacing. "
+            "Use a coherent font pairing when appropriate, and a single font when requested. Do not reuse a default palette for every request. "
+            "Available fonts: " + ", ".join(FONT_FILES) + ". Respect explicit user fonts, sizes and colours. ")
         from datetime import date
         instruction += f"Today's local date is {date.today().isoformat()}. Do not invent dates, recipients, named organisations, results or statistics. Omit unspecified dates. "
         instruction += "Use facts provided by the user; otherwise clearly label estimates. Return actual data values, never a JSON schema. Use six-digit hex theme colours without #. "
         if mode == "spreadsheet":
             instruction += "Set number formats for each column. Include charts only when requested or clearly useful. Keep headers concise. "
+            instruction += "Use body_size 10-13. Choose header_style, row stripes, column widths and alignments suitable for the data. Put charts beside, below or on a dashboard. Choose distinct chart_colors from a palette that complements the workbook theme. "
         elif mode == "presentation":
             instruction += "Use varied cover, comparison, timeline, metric and split layouts where content fits. Avoid repeated bullet slides. "
             instruction += "Write short bullets; put detailed explanations in speaker notes. Columns contain heading and text. Never invent quotations or numerical results. "
             instruction += "Fill comparison columns and timeline steps with useful content, not empty arrays. Suggested teaching activities are welcome when clearly presented as a proposal. "
+            instruction += "Use body_size 18-24, heading_size 28-36 and title_size 40-56. Alternate base, accent or contrast slide backgrounds with purpose. Use cards, section dividers and native table layouts when helpful. Tables have at most 5 columns and 6 rows. Keep slides concise so they fit; preserve details in notes. "
         else:
             instruction += "Organise the document into readable sections. Put lists in bullets and tables in table.columns and table.rows, never as Markdown in text. "
             instruction += "The renderer creates the title page from title and subtitle when cover=true; do not add a Title Page or Cover section. Use a cover unless a short document was requested. "
+            instruction += "Use body_size 10-12, heading_size 16-24 and title_size 28-40. Choose paper, orientation and margin. Use callout emphasis for key sections and page breaks only where the content needs them. "
         instruction += "Example content object: " + json.dumps(example)
         output_schema = schema.model_json_schema()
         output_schema["required"] = list(dict.fromkeys([*output_schema.get("required", []), "theme"]))
-        output_schema["$defs"]["Theme"]["required"] = ["background", "foreground", "accent", "font"]
+        output_schema["$defs"]["Theme"]["required"] = ["background", "foreground", "accent", "font", "heading_font",
+            "style", "body_size", "heading_size", "title_size", "line_spacing", "spacing"]
         value: dict[str, Any] | None = None
         for attempt in range(2):
-            raw = await runtime.complete(model, instruction + "\nRequest:\n" + prompt, json_mode=output_schema, max_tokens=2800)
+            raw = await runtime.complete(model, instruction + "\nRequest:\n" + prompt, json_mode=output_schema, max_tokens=4200)
             try:
                 value = schema.model_validate_json(raw).model_dump()
                 break

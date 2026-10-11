@@ -24,6 +24,8 @@ You need Windows x64, [WebView2](https://learn.microsoft.com/en-us/microsoft-edg
 
 Choose a task beside the message box. Describe the content, style and format you want—for example, “Create a purple and cream proposal as Word and PDF.”
 
+Documents, workbooks and slides adapt their fonts, colours, spacing and layouts to your request.
+
 Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Large image exports are resized from a render of up to 512 pixels; generated speech is English. Review generated content before using it.
 
 ## Your workspace

@@ -73,3 +73,95 @@ def test_requested_timeline_is_a_native_table_when_model_returns_bullets(tmp_pat
     assert "674183" in document.tables[0]._tbl.xml
     assert "Month 1: Recruitment" not in [p.text for p in document.paragraphs]
     assert prepare_document(plan, "Create a proposal without tables.")["sections"][1]["table"] is None
+
+
+def test_requested_typography_survives_word_and_pdf_export(tmp_path):
+    from docx import Document
+    from docx.styles.style import ParagraphStyle
+    from pypdf import PdfReader
+    from macbot.design import requested_theme, write_document
+
+    value = {"title": "Community arts", "cover": False, "margin": 0.7,
+             "theme": requested_theme({}, "Use headings in Georgia, body in Arial, body size 12pt and title size 36pt."),
+             "sections": [{"heading": "Plan", "text": "A guide for the community.", "emphasis": "callout"},
+                          {"heading": "Delivery", "text": "All activities remain visible.", "page_break_before": True}]}
+    word, pdf = tmp_path / "arts.docx", tmp_path / "arts.pdf"
+    write_document(value, word, "docx")
+    write_document(value, pdf, "pdf")
+    document = Document(word)
+    assert cast(ParagraphStyle, document.styles["Normal"]).font.name == "Arial"
+    assert cast(ParagraphStyle, document.styles["Normal"]).font.size.pt == 12
+    assert cast(ParagraphStyle, document.styles["Title"]).font.name == "Georgia"
+    assert "asciiTheme" not in cast(ParagraphStyle, document.styles["Title"]).element.xml
+    assert cast(ParagraphStyle, document.styles["Title"]).font.size.pt == 36
+    assert document.sections[0].left_margin.inches == pytest.approx(0.7)
+    pages = PdfReader(pdf).pages
+    assert len(pages) == 2
+    assert "All activities remain visible." in pages[1].extract_text()
+    fonts = {str(font.get_object()["/BaseFont"]) for page in pages
+             for font in page["/Resources"]["/Font"].get_object().values()}
+    assert any("Georgia" in name for name in fonts)
+    assert any("Arial" in name for name in fonts)
+
+
+def test_workbook_design_keeps_wrapped_content_and_real_dashboard_data(tmp_path):
+    value = {"title": "Arts budget", "columns": ["Activity", "Budget"],
+             "rows": [["A long community workshop description that needs multiple lines in the requested narrow column", 125],
+                      ['=HYPERLINK("https://example.com")', 250]],
+             "theme": {"font": "Arial", "heading_font": "Georgia", "body_size": 12, "spacing": "airy"},
+             "column_widths": [24, 16], "alignments": ["left", "right"],
+             "header_style": "accent", "chart_placement": "dashboard", "chart_colors": ["674183", "236B70"],
+             "charts": [{"kind": "bar", "value_columns": [2]}], "formats": ["text", "usd"]}
+    path = tmp_path / "arts.xlsx"
+    write_sheet(value, path)
+    book = load_workbook(path)
+    page = cast(Worksheet, book.active)
+    assert page["A2"].value == value["rows"][0][0]
+    assert page["A3"].data_type == "s" and str(page["A3"].value).startswith("'=")
+    assert page.row_dimensions[2].height > 50
+    assert page["A1"].font.name == "Georgia" and page["A2"].font.name == "Arial"
+    assert page.column_dimensions["A"].width == 24
+    assert page.tables["MacBotData"].tableStyleInfo.name == "TableStyleLight1"
+    assert page.auto_filter.ref is None
+    assert page.tables["MacBotData"].autoFilter.ref == page.dimensions
+    chart = cast(Any, book["Charts"])._charts[0]
+    assert "Arts budget" in chart.series[0].val.numRef.f
+    assert chart.series[0].graphicalProperties.solidFill.srgbClr == "674183"
+    assert chart.x_axis.delete is False and chart.x_axis.tickLblPos == "nextTo"
+    assert chart.series[0].cat.strRef.f.endswith("$A$2:$A$3")
+    book.close()
+
+
+def test_slides_keep_all_eight_items_and_editable_tables_within_page(tmp_path):
+    from pptx import Presentation
+    from macbot.slides import render_deck
+
+    items = [f"Activity {number}: a short useful description." for number in range(1, 9)]
+    value = {"title": "Arts workshop", "aspect_ratio": "4:3",
+             "theme": {"font": "Arial", "heading_font": "Georgia", "body_size": 20, "heading_size": 30,
+                       "title_size": 44, "style": "bold", "accent": "674183"},
+             "slides": [{"title": "Activities", "layout": "cards", "bullets": items},
+                        {"title": "Schedule", "layout": "table", "background": "contrast", "bullets": [],
+                         "table": {"columns": ["Phase", "Activity"], "rows": [["1", "Planning"], ["2", "Workshop"]]}}]}
+    path = tmp_path / "arts.pptx"
+    render_deck(value, path)
+    presentation = Presentation(path)
+    slide_text = "\n".join(shape.text for shape in presentation.slides[0].shapes if shape.has_text_frame)
+    assert all(item in slide_text for item in items)
+    assert presentation.slides[1].background.fill.fore_color.rgb != presentation.slides[0].background.fill.fore_color.rgb
+    tables = [shape.table for shape in presentation.slides[1].shapes if shape.has_table]
+    assert len(tables) == 1 and tables[0].cell(2, 1).text == "Workshop"
+    assert any(shape.has_text_frame and any(p.font.name == "Georgia" for p in shape.text_frame.paragraphs)
+               for shape in presentation.slides[0].shapes)
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            assert 0 <= shape.left and shape.left + shape.width <= presentation.slide_width
+            assert 0 <= shape.top and shape.top + shape.height <= presentation.slide_height
+
+
+@pytest.mark.parametrize("theme", [{"font": "../../payload"}, {"accent": '<script>alert(1)</script>'}, {"body_size": 10000}])
+def test_file_design_rejects_unsafe_or_unbounded_style_values(theme):
+    from macbot.design import Theme
+
+    with pytest.raises(ValueError):
+        Theme.model_validate(theme)

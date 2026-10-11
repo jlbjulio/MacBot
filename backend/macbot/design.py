@@ -7,22 +7,85 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field, model_validator
 
+FontName = Literal["Calibri", "Arial", "Georgia", "Aptos", "Verdana", "Segoe UI", "Cambria", "Trebuchet MS", "Tahoma", "Times New Roman"]
+FONT_FILES = {
+    "Calibri": ("calibri", "calibrib", "calibrii", "calibriz"),
+    "Arial": ("arial", "arialbd", "ariali", "arialbi"),
+    "Georgia": ("georgia", "georgiab", "georgiai", "georgiaz"),
+    "Aptos": ("aptos", "aptos-bold", "aptos-italic", "aptos-bold-italic"),
+    "Verdana": ("verdana", "verdanab", "verdanai", "verdanaz"),
+    "Segoe UI": ("segoeui", "segoeuib", "segoeuii", "segoeuiz"),
+    "Cambria": ("cambria", "cambriab", "cambriai", "cambriaz"),
+    "Trebuchet MS": ("trebuc", "trebucbd", "trebucit", "trebucbi"),
+    "Tahoma": ("tahoma", "tahomabd", "tahoma", "tahomabd"),
+    "Times New Roman": ("times", "timesbd", "timesi", "timesbi"),
+}
+
+
+def luminance(color):
+    channels = [int(color[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    return sum((c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055)**2.4) * weight
+               for c, weight in zip(channels, (0.2126, 0.7152, 0.0722)))
+
+
+def readable_color(foreground, background):
+    first, second = sorted((luminance(background), luminance(foreground)))
+    if (second + 0.05) / (first + 0.05) >= 4.5:
+        return foreground.upper()
+    return "151515" if luminance(background) > 0.179 else "FAFAFA"
+
+
+def font_file(name, variant=0):
+    import os
+    roots = [Path("C:/Windows/Fonts"), Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/Windows/Fonts"]
+    stem = FONT_FILES[name][variant]
+    return next((root / (stem + suffix) for root in roots for suffix in (".ttf", ".ttc")
+                 if (root / (stem + suffix)).is_file()), None)
+
+
+def pdf_font(name):
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    selected = name if font_file(name) else "Arial"
+    regular = font_file(selected)
+    if regular is None:
+        return "Times-Roman" if name in ("Georgia", "Cambria", "Times New Roman") else "Helvetica"
+    family = "MacBot" + re.sub(r"\W", "", selected)
+    variants = []
+    for number in range(4):
+        path = font_file(selected, number) or regular
+        identifier = family + str(number)
+        if identifier not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(identifier, str(path)))
+        variants.append(identifier)
+    pdfmetrics.registerFontFamily(variants[0], normal=variants[0], bold=variants[1], italic=variants[2], boldItalic=variants[3])
+    return variants[0]
+
 
 class Theme(BaseModel):
     background: str = Field(default="F5F1E8", pattern=r"^[0-9A-Fa-f]{6}$")
     foreground: str = Field(default="203430", pattern=r"^[0-9A-Fa-f]{6}$")
     accent: str = Field(default="B46B47", pattern=r"^[0-9A-Fa-f]{6}$")
-    font: Literal["Calibri", "Arial", "Georgia", "Aptos", "Verdana"] = "Calibri"
+    font: FontName = "Calibri"
+    heading_font: FontName | None = None
+    style: Literal["editorial", "minimal", "formal", "bold"] = "editorial"
+    body_size: float = Field(default=11, ge=9, le=28)
+    heading_size: float = Field(default=20, ge=14, le=48)
+    title_size: float = Field(default=34, ge=24, le=72)
+    line_spacing: float = Field(default=1.15, ge=1.05, le=1.6)
+    spacing: Literal["compact", "comfortable", "airy"] = "comfortable"
+
+    @property
+    def heading_face(self):
+        return self.heading_font or self.font
+
+    @property
+    def paragraph_gap(self):
+        return {"compact": 5, "comfortable": 9, "airy": 14}[self.spacing]
 
     @model_validator(mode="after")
     def readable(self):
-        def luminance(color):
-            channels = [int(color[i:i + 2], 16) / 255 for i in (0, 2, 4)]
-            values = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055)**2.4 for c in channels]
-            return sum(c * weight for c, weight in zip(values, (0.2126, 0.7152, 0.0722)))
-        first, second = sorted((luminance(self.background), luminance(self.foreground)))
-        if (second + 0.05) / (first + 0.05) < 4.5:
-            self.foreground = "151515" if luminance(self.background) > 0.179 else "FAFAFA"
+        self.foreground = readable_color(self.foreground, self.background)
         return self
 
 
@@ -45,10 +108,21 @@ def requested_theme(value, request):
         explicit = re.search(r"\b" + role + r"\s*(?:colou?r\s*)?(?:[:=]|is)?\s*#([0-9a-f]{6})\b", request, re.I)
         if explicit:
             setattr(theme, role, explicit[1].upper())
-    font = re.search(r"\b(Calibri|Arial|Georgia|Aptos|Verdana)\b", request, re.I)
-    if font:
-        theme.font = next(name for name in ("Calibri", "Arial", "Georgia", "Aptos", "Verdana")
-                          if name.lower() == font[1].lower())
+    faces = "|".join(re.escape(name) for name in FONT_FILES)
+    specific = re.search(r"\b(?:headings?|titles?)\s+(?:in|font\s*[:=]?)\s*(" + faces + r")\b", request, re.I)
+    fonts = re.findall(r"\b(?:" + faces + r")\b", request, re.I)
+    if specific:
+        theme.heading_font = next(name for name in FONT_FILES if name.lower() == specific[1].lower())
+    body = re.search(r"\b(?:body|text)\s+(?:in|font\s*[:=]?)\s*(" + faces + r")\b", request, re.I)
+    if body:
+        theme.font = next(name for name in FONT_FILES if name.lower() == body[1].lower())
+    elif len(set(face.lower() for face in fonts)) == 1 and not specific:
+        theme.font = next(name for name in FONT_FILES if name.lower() == fonts[0].lower())
+        theme.heading_font = theme.font
+    for role in ("body", "heading", "title"):
+        size = re.search(r"\b" + role + r"(?:\s+font)?\s+(?:size\s*[:=]?\s*)?(\d+(?:\.\d+)?)\s*(?:pt|points?)\b", request, re.I)
+        if size:
+            setattr(theme, role + "_size", float(size[1]))
     return Theme.model_validate(theme.model_dump()).model_dump()
 
 
@@ -62,6 +136,8 @@ class Section(BaseModel):
     text: str = Field(default="", max_length=3500)
     bullets: list[str] = Field(default_factory=list, max_length=12)
     table: Table | None = None
+    emphasis: Literal["normal", "callout"] = "normal"
+    page_break_before: bool = False
 
 
 class DocumentSpec(BaseModel):
@@ -72,6 +148,7 @@ class DocumentSpec(BaseModel):
     paper: Literal["A4", "LETTER"] = "A4"
     orientation: Literal["portrait", "landscape"] = "portrait"
     cover: bool = True
+    margin: float = Field(default=0.85, ge=0.45, le=1.3)
     sections: list[Section] = Field(min_length=1, max_length=20)
 
 
@@ -211,20 +288,50 @@ def write_document(value, path, fmt):
         if spec.orientation == "landscape":
             width, height = height, width
         page.page_width, page.page_height = Inches(width), Inches(height)
-        page.top_margin = page.bottom_margin = Inches(0.85)
-        page.left_margin = page.right_margin = Inches(0.9)
+        page.top_margin = page.bottom_margin = Inches(spec.margin)
+        page.left_margin = page.right_margin = Inches(spec.margin)
+        def set_font(style, face):
+            style.font.name = face
+            fonts = style.element.xpath("./w:rPr/w:rFonts")[0]
+            fonts.attrib.pop(qn("w:cstheme"), None)
+            for role in ("ascii", "hAnsi", "eastAsia", "cs"):
+                fonts.attrib.pop(qn("w:" + role + "Theme"), None)
+                fonts.set(qn("w:" + role), face)
         normal = cast(WordParagraphStyle, doc.styles["Normal"])
-        normal.font.name, normal.font.size = spec.theme.font, Pt(11)
-        normal.font.color.rgb = RGBColor.from_string("203430")
-        heading_color = Theme(background="FFFFFF", foreground=spec.theme.accent).foreground
-        normal.paragraph_format.space_after = Pt(9)
-        normal.paragraph_format.line_spacing = 1.15
+        set_font(normal, spec.theme.font)
+        normal.font.size = Pt(spec.theme.body_size)
+        normal.font.color.rgb = RGBColor.from_string(readable_color(spec.theme.foreground, "FFFFFF"))
+        heading_color = readable_color(spec.theme.accent, "FFFFFF")
+        normal.paragraph_format.space_after = Pt(spec.theme.paragraph_gap)
+        normal.paragraph_format.line_spacing = spec.theme.line_spacing
         for heading in ("Title", "Heading 1", "Heading 2"):
             style = cast(WordParagraphStyle, doc.styles[heading])
-            style.font.name = spec.theme.font
+            set_font(style, spec.theme.heading_face)
+            style.font.size = Pt(spec.theme.title_size if heading == "Title" else
+                                 spec.theme.heading_size if heading == "Heading 1" else max(14, spec.theme.heading_size - 4))
+            style.font.bold = spec.theme.style != "minimal"
             style.font.color.rgb = RGBColor.from_string(heading_color)
+            style.paragraph_format.keep_with_next = True
+        for name in ("Header", "Footer", "Subtitle"):
+            style = cast(WordParagraphStyle, doc.styles[name])
+            set_font(style, spec.theme.font)
+            style.font.color.rgb = normal.font.color.rgb
         doc.core_properties.title, doc.core_properties.author = spec.title, "MacBot"
-        doc.add_heading(spec.title, 0)
+        title_paragraph = doc.add_heading(spec.title, 0)
+        if spec.theme.style in ("bold", "editorial"):
+            border = OxmlElement("w:pBdr")
+            edge = OxmlElement("w:bottom")
+            for key, setting in {"val": "single", "sz": "24" if spec.theme.style == "bold" else "8",
+                                 "space": "12", "color": spec.theme.accent}.items():
+                edge.set(qn("w:" + key), setting)
+            border.append(edge)
+            title_paragraph._p.get_or_add_pPr().append(border)
+        if spec.theme.style == "bold":
+            fill = OxmlElement("w:shd")
+            fill.set(qn("w:fill"), spec.theme.background)
+            title_paragraph._p.get_or_add_pPr().append(fill)
+            for run in title_paragraph.runs:
+                run.font.color.rgb = RGBColor.from_string(spec.theme.foreground)
         if spec.subtitle:
             doc.add_paragraph(spec.subtitle, "Subtitle")
         def word_text(paragraph, text):
@@ -242,12 +349,20 @@ def write_document(value, path, fmt):
             doc.add_page_break()
         page.header.paragraphs[0].text = spec.title[:90]
         footer_paragraph = page.footer.paragraphs[0]
-        footer_paragraph.text = "MacBot  ·  "
+        footer_paragraph.text = "Page "
         field = OxmlElement("w:fldSimple")
         field.set(qn("w:instr"), "PAGE")
         footer_paragraph._p.append(field)
         for section in sections:
-            doc.add_heading(section.heading, 1)
+            if section.page_break_before and section is not sections[0]:
+                doc.add_page_break()
+            section_heading = doc.add_heading(section.heading, 1)
+            if section.emphasis == "callout":
+                fill = OxmlElement("w:shd")
+                fill.set(qn("w:fill"), spec.theme.background)
+                section_heading._p.get_or_add_pPr().append(fill)
+                for run in section_heading.runs:
+                    run.font.color.rgb = RGBColor.from_string(spec.theme.foreground)
             for block in section_blocks(section):
                 if block.kind != "table":
                     style = {"bullet": "List Bullet", "number": "List Number", "heading": "Heading 2"}.get(block.kind)
@@ -257,6 +372,8 @@ def write_document(value, path, fmt):
                 data = block.table
                 table = doc.add_table(rows=1, cols=len(data.columns))
                 table.style = "Table Grid"
+                repeat = OxmlElement("w:tblHeader")
+                table.rows[0]._tr.get_or_add_trPr().append(repeat)
                 for cell, heading in zip(table.rows[0].cells, data.columns):
                     word_text(cell.paragraphs[0], heading)
                     shade(cell, spec.theme.accent)
@@ -280,35 +397,26 @@ def write_document(value, path, fmt):
     from reportlab.lib.pagesizes import A4, LETTER, landscape
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table as PDFTable, TableStyle, Flowable
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    font = "Helvetica"
-    fonts = {"Calibri": "calibri.ttf", "Arial": "arial.ttf", "Georgia": "georgia.ttf", "Aptos": "aptos.ttf", "Verdana": "verdana.ttf"}
-    installed_font = Path("C:/Windows/Fonts") / fonts[spec.theme.font]
-    if not installed_font.exists():
-        installed_font = Path("C:/Windows/Fonts/arial.ttf")
-    if installed_font.exists():
-        font = "MacBotText" + installed_font.stem
-        if font not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(TTFont(font, str(installed_font)))
-        stems = {"calibri": ("calibrib", "calibrii", "calibriz"), "georgia": ("georgiab", "georgiai", "georgiaz"),
-                 "arial": ("arialbd", "ariali", "arialbi"), "verdana": ("verdanab", "verdanai", "verdanaz")}
-        variants = []
-        for stem in stems.get(installed_font.stem.lower(), ("", "", "")):
-            variant = installed_font.with_name(stem + ".ttf")
-            name = font + stem if variant.is_file() else font
-            if name not in pdfmetrics.getRegisteredFontNames():
-                pdfmetrics.registerFont(TTFont(name, str(variant)))
-            variants.append(name)
-        pdfmetrics.registerFontFamily(font, normal=font, bold=variants[0], italic=variants[1], boldItalic=variants[2])
+    font, heading_font = pdf_font(spec.theme.font), pdf_font(spec.theme.heading_face)
     page_size = A4 if spec.paper == "A4" else LETTER
     if spec.orientation == "landscape":
         page_size = landscape(page_size)
     accent = colors.HexColor("#" + spec.theme.accent)
-    heading_color = colors.HexColor("#" + Theme(background="FFFFFF", foreground=spec.theme.accent).foreground)
-    body = ParagraphStyle("Body", fontName=font, fontSize=10.5, leading=16, spaceAfter=10, textColor=colors.HexColor("#203430"))
-    title = ParagraphStyle("Title", parent=body, fontSize=30, leading=36, textColor=heading_color, spaceAfter=20)
-    heading = ParagraphStyle("Heading", parent=body, fontSize=18, leading=24, textColor=heading_color, spaceBefore=17, spaceAfter=12)
+    heading_color = colors.HexColor("#" + readable_color(spec.theme.accent, "FFFFFF"))
+    body = ParagraphStyle("Body", fontName=font, fontSize=spec.theme.body_size,
+                          leading=spec.theme.body_size * spec.theme.line_spacing,
+                          spaceAfter=spec.theme.paragraph_gap,
+                          textColor=colors.HexColor("#" + readable_color(spec.theme.foreground, "FFFFFF")))
+    title = ParagraphStyle("Title", parent=body, fontName=heading_font, fontSize=spec.theme.title_size,
+                           leading=spec.theme.title_size * 1.2, textColor=heading_color, spaceAfter=20)
+    heading = ParagraphStyle("Heading", parent=body, fontName=heading_font, fontSize=spec.theme.heading_size,
+                             leading=spec.theme.heading_size * 1.25, textColor=heading_color,
+                             spaceBefore=spec.theme.paragraph_gap + 8, spaceAfter=spec.theme.paragraph_gap,
+                             keepWithNext=True)
+    if spec.theme.style == "bold":
+        title.backColor = colors.HexColor("#" + spec.theme.background)
+        title.textColor = colors.HexColor("#" + spec.theme.foreground)
+        title.borderPadding = 12
     elements: list[Flowable] = [Paragraph(escape(spec.title), title)]
     if spec.subtitle:
         elements.append(Paragraph(escape(spec.subtitle), body))
@@ -318,7 +426,14 @@ def write_document(value, path, fmt):
             elements += [Paragraph("Inside", heading), *[Paragraph(escape(s.heading), body) for s in sections]]
         elements.append(PageBreak())
     for section in sections:
-        elements.append(Paragraph(escape(section.heading), heading))
+        if section.page_break_before and section is not sections[0]:
+            elements.append(PageBreak())
+        section_style = heading
+        if section.emphasis == "callout":
+            section_style = ParagraphStyle("Callout", parent=heading, borderPadding=8,
+                backColor=colors.HexColor("#" + spec.theme.background),
+                textColor=colors.HexColor("#" + spec.theme.foreground))
+        elements.append(Paragraph(escape(section.heading), section_style))
         for block in section_blocks(section):
             if block.kind != "table":
                 prefix = "• " if block.kind == "bullet" else "– " if block.kind == "number" else ""
@@ -332,19 +447,24 @@ def write_document(value, path, fmt):
                 if len(row) != len(data.columns):
                     raise ValueError("Document table rows must match their columns.")
                 rows.append([Paragraph(pdf_inline(str(c) if c is not None else ""), tinted if number % 2 else body) for c in row])
-            table = PDFTable(rows, colWidths=[(page_size[0] - 110) / len(data.columns)] * len(data.columns), repeatRows=1)
+            margin = spec.margin * 72
+            table = PDFTable(rows, colWidths=[(page_size[0] - margin * 2 - 12) / len(data.columns)] * len(data.columns), repeatRows=1)
             table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + spec.theme.background)),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#" + spec.theme.background)]),
                 ("LINEBELOW", (0, 0), (-1, 0), 1.2, accent), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 7)]))
             elements += [table, Spacer(1, 12)]
     def footer(canvas, document):
+        margin = spec.margin * 72
         canvas.setStrokeColor(accent)
-        canvas.line(55, 42, page_size[0] - 55, 42)
+        canvas.line(margin, 42, page_size[0] - margin, 42)
         canvas.setFont(font, 8)
-        canvas.drawString(55, 28, spec.title[:65])
-        canvas.drawRightString(page_size[0] - 55, 28, f"MacBot · {document.page}")
-    SimpleDocTemplate(str(path), pagesize=page_size, rightMargin=55, leftMargin=55, topMargin=58, bottomMargin=60,
+        canvas.setFillColor(body.textColor)
+        canvas.drawString(margin, 28, spec.title[:65])
+        canvas.drawRightString(page_size[0] - margin, 28, f"Page {document.page}")
+    margin = spec.margin * 72
+    SimpleDocTemplate(str(path), pagesize=page_size, rightMargin=margin, leftMargin=margin,
+                      topMargin=margin, bottomMargin=max(margin, 60),
                       title=spec.title, author="MacBot").build(elements, onFirstPage=footer, onLaterPages=footer)
     from pypdf import PdfReader
     if not PdfReader(path).pages:
