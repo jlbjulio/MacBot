@@ -14,7 +14,7 @@ def export():
     destination = ROOT / "bootstrap/requirements.txt"
     subprocess.run([
         "uv", "export", "--directory", str(ROOT / "backend"), "--locked",
-        "--no-dev", "--no-emit-project", "--no-emit-package", "antlr4-python3-runtime",
+        "--no-dev", "--no-emit-project",
         "--emit-index-url", "--output-file", str(destination), "--quiet",
     ], check=True, capture_output=True)
     lock = tomllib.loads((ROOT / "backend/uv.lock").read_text(encoding="utf-8"))

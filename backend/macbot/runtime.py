@@ -25,8 +25,11 @@ def local_model(name):
 
 
 class LlamaRuntime:
-    def __init__(self, directory, python=None):
+    def __init__(self, directory, python=None, purpose="chat"):
+        if purpose not in ("chat", "ocr"):
+            raise ValueError("Unsupported local inference task.")
         self.directory = Path(directory)
+        self.purpose = purpose
         self.python = python or sys.executable
         self.process: subprocess.Popen[str] | None = None
         self.log: TextIO | None = None
@@ -35,7 +38,11 @@ class LlamaRuntime:
 
     async def models(self):
         from .setup import Setup
-        ready = Setup(self.directory).chat_ready()
+        if self.purpose == "ocr":
+            from .setup import asset_ready
+            ready = asset_ready(self.directory, "ocr")
+        else:
+            ready = Setup(self.directory).chat_ready()
         from .inference import engine_path
         engine = engine_path().is_file()
         return {"available": ready and engine, "models": [{"name": MODEL_NAME,
@@ -78,12 +85,12 @@ class LlamaRuntime:
             return
         await self.unload()
         self.directory.joinpath("logs").mkdir(parents=True, exist_ok=True)
-        self.log = (self.directory / "logs/inference.log").open("a", encoding="utf-8")
+        self.log = (self.directory / f"logs/{self.purpose}-inference.log").open("a", encoding="utf-8")
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         environment = {**os.environ, "HF_HUB_DISABLE_TELEMETRY": "1", "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
                        "PYTHONIOENCODING": "utf-8"}
         try:
-            self.process = subprocess.Popen([self.python, "-I", "-u", str(self.worker), str(self.directory / "models/chat")],
+            self.process = subprocess.Popen([self.python, "-I", "-u", str(self.worker), str(self.directory / "models" / self.purpose), self.purpose],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log,
             text=True, encoding="utf-8", env=environment, creationflags=creationflags)
             assert self.process.stdout is not None
@@ -104,7 +111,7 @@ class LlamaRuntime:
             process = self.process
             assert process is not None and process.stdin is not None and process.stdout is not None
             request = {"messages": messages, "json_mode": json_mode, "max_tokens": max_tokens,
-                       "reasoning": REASONING.get()}
+                       "reasoning": REASONING.get(), "purpose": self.purpose}
             raw = json.dumps(request, ensure_ascii=False)
             if len(raw.encode("utf-8")) > 150 * 1024**2:
                 raise ValueError("These attachments are too large for local inference.")

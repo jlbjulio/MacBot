@@ -5,19 +5,19 @@ def test_qdrant_filters_out_other_conversations(tmp_path):
     from qdrant_client import QdrantClient, models
 
     class Embedding:
-        def embed(self, texts):
+        def encode(self, texts, query=False):
             import numpy as np
 
-            yield np.array([1.0, 0.0])
+            return [np.array([1.0, 0.0]) for _ in texts]
 
     index = RetrievalIndex(tmp_path)
     index.client = QdrantClient(":memory:")
-    index.embedding = Embedding()
+    index.gemma = Embedding()
     index.client.create_collection(
-        "documents_e5_v1", vectors_config=models.VectorParams(size=2, distance=models.Distance.COSINE)
+        index.collection, vectors_config=models.VectorParams(size=2, distance=models.Distance.COSINE)
     )
     index.client.upsert(
-        "documents_e5_v1",
+        index.collection,
         points=[
             models.PointStruct(id=1, vector=[1.0, 0.0], payload={"upload_id": "allowed", "text": "visible"}),
             models.PointStruct(

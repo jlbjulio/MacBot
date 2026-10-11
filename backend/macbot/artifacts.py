@@ -1,4 +1,3 @@
-import gc
 import json
 import re
 import wave
@@ -26,6 +25,13 @@ class ImageSpec(BaseModel):
     format: Literal["png", "jpeg", "webp"] = "png"
     style: Literal["none", "photographic", "anime", "watercolor", "cinematic", "pixel-art", "vintage", "illustration"] = "none"
     filter: Literal["none", "grayscale", "sepia", "vivid"] = "none"
+    transparent: bool = False
+
+    @model_validator(mode="after")
+    def alpha_format(self):
+        if self.transparent and self.format == "jpeg":
+            raise ValueError("Transparent images need PNG or WebP.")
+        return self
 
 
 CellFormat = Literal["text", "integer", "decimal", "percent", "usd", "eur", "date"]
@@ -280,56 +286,42 @@ def synthesize(text, path, directory):
 
 
 def draw_image(prompt, path, directory, seed=42, options=None, stop=None):
-    import torch
-    from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline
-    from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+    from .image_engine import render
     from PIL import Image, ImageEnhance, ImageOps
     specification = ImageSpec.model_validate(options or {"prompt": prompt, "width": 384, "height": 384})
-    scale = min(1, 512 / max(specification.width, specification.height))
-    width = max(128, round(specification.width * scale / 8) * 8)
-    height = max(128, round(specification.height * scale / 8) * 8)
-    torch.set_num_threads(4)
-    model = prepare_asset(directory, "image")
-    pipeline = StableDiffusionPipeline.from_pretrained(str(model), torch_dtype=torch.float32,
-                                                      local_files_only=True)
-    pipeline.to("cpu")
-    pipeline.enable_attention_slicing()
-    pipeline.set_progress_bar_config(disable=True)
+    styles = {"photographic": "natural photography, realistic lighting", "anime": "anime illustration, expressive linework",
+              "watercolor": "watercolor on textured paper", "cinematic": "cinematic lighting, careful composition",
+              "pixel-art": "pixel art, crisp limited palette", "vintage": "vintage film photograph, warm tones",
+              "illustration": "editorial illustration, deliberate composition", "none": ""}
+    brief = specification.prompt + (", " + styles[specification.style] if styles[specification.style] else "")
+    if specification.negative_prompt:
+        brief += ". Avoid: " + specification.negative_prompt
+    if specification.transparent:
+        brief = "This is an RGBA image with transparency. " + brief + ". The image has alpha channel and the background is transparent."
+    temporary, metadata = render(brief[:1800], path, directory, specification.width, specification.height, seed, stop)
     try:
-        styles = {"photographic": "natural photography, realistic lighting", "anime": "anime illustration, expressive linework",
-                  "watercolor": "watercolor on textured paper", "cinematic": "cinematic lighting, careful composition",
-                  "pixel-art": "pixel art, crisp limited palette", "vintage": "vintage film photograph, warm tones",
-                  "illustration": "editorial illustration, deliberate composition", "none": ""}
-        def check_stop(pipeline, step, timestep, values):
-            if stop is not None and stop.is_set():
-                raise InterruptedError("Image creation stopped.")
-            return values
-        # Diffusers annotates this as a legacy callback, but step-end hooks receive four arguments.
-        result = pipeline(prompt=(specification.prompt + ", " + styles[specification.style])[:1000], negative_prompt=specification.negative_prompt,
-                          width=width, height=height, num_inference_steps=18, guidance_scale=7.0,
-                          generator=torch.Generator(device="cpu").manual_seed(seed), callback_on_step_end=cast(Any, check_stop))
-        assert isinstance(result, StableDiffusionPipelineOutput)
-        if result.nsfw_content_detected and result.nsfw_content_detected[0]:
-            raise ValueError("The image model's safety check declined this output. Try another description.")
-        picture = result.images[0]
-        assert isinstance(picture, Image.Image)
+        with Image.open(temporary) as source:
+            picture = source.copy()
+        alpha = picture.getchannel("A") if picture.mode == "RGBA" else None
         if specification.filter == "grayscale":
-            picture = ImageOps.grayscale(picture).convert("RGB")
+            picture = ImageOps.grayscale(picture.convert("RGB")).convert("RGB")
         elif specification.filter == "sepia":
-            picture = ImageOps.colorize(ImageOps.grayscale(picture), "#24140c", "#f8e3b7")
+            picture = ImageOps.colorize(ImageOps.grayscale(picture.convert("RGB")), "#24140c", "#f8e3b7")
         elif specification.filter == "vivid":
             picture = ImageEnhance.Color(picture).enhance(1.35)
+        if alpha is not None and specification.format != "jpeg":
+            picture.putalpha(alpha)
+        elif specification.format == "jpeg":
+            picture = picture.convert("RGB")
         if stop is not None and stop.is_set():
             raise InterruptedError("Image creation stopped.")
         picture = ImageOps.fit(picture, (specification.width, specification.height), method=Image.Resampling.LANCZOS)
         picture.save(path, format=specification.format.upper(), **({"quality": 95} if specification.format != "png" else {}))
         with Image.open(path) as check:
             check.verify()
-        return {**specification.model_dump(), "native_width": width, "native_height": height, "seed": seed,
-                "upscaled": width != specification.width or height != specification.height}
+        return {**specification.model_dump(), **metadata}
     finally:
-        del pipeline
-        gc.collect()
+        temporary.unlink(missing_ok=True)
 
 
 async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=None):
@@ -341,7 +333,8 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
     emit({"type": "stage", "agent": "creator", "label": f"Creating your {mode}"})
     if mode == "image":
         raw = await runtime.complete(model, "Translate this request into a concrete image brief. Preserve explicit size, aspect ratio, style, filter and file format. "
-            "Enhance composition and lighting without changing the subject. Width and height are export pixels, 128 to 2048; native rendering is limited to 512 on the longest edge. "
+            "Enhance composition and lighting without changing the subject. Width and height are export pixels, 128 to 2048. "
+            "Use transparent=true only when the user requests transparency or background removal; choose PNG or WebP for transparency. "
             "Return actual values, not a schema. Request:\n" + prompt, json_mode=ImageSpec.model_json_schema(), max_tokens=550)
         specification = ImageSpec.model_validate_json(raw)
         request = prompt.split("<untrusted_attachment", 1)[0]
@@ -356,6 +349,9 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
         for file_format in ("webp", "jpeg", "png"):
             if re.search(r"\b" + file_format + r"\b", request, re.I):
                 specification.format = cast(Literal["png", "jpeg", "webp"], file_format)
+        if re.search(r"\b(?:transparent|transparency|remove (?:the )?background)\b", request, re.I):
+            specification.transparent = True
+        specification = ImageSpec.model_validate(specification.model_dump())
         await runtime.unload(model)
         extension = specification.format
         path = path.with_suffix("." + extension)
@@ -369,8 +365,9 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
             stop.set()
             try:
                 await worker
-            except InterruptedError:
+            except (InterruptedError, ValueError, OSError):
                 pass
+            path.unlink(missing_ok=True)
             raise
         answer = f"Your {extension.upper()} image is ready: **{specification.width} × {specification.height}**."
         if metadata["upscaled"]:
@@ -483,5 +480,5 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
         metadata = {"theme": value["theme"]}
         answer = f"Created **{value['title']}**. Download your {mode} below."
     return {"answer": answer, "sources": [], "artifacts": [{"id": artifact_id, "kind": mode,
-            "name": f"MacBot.{extension}", "path": str(path), "metadata": {"prompt": prompt, "engine": "tiny-sd" if mode == "image" else "Piper" if mode == "audio" else model,
+            "name": f"MacBot.{extension}", "path": str(path), "metadata": {"prompt": prompt, "engine": "Qwen-Image-2.1-Turbo / stable-diffusion.cpp" if mode == "image" else "Piper" if mode == "audio" else model,
             **metadata}}]}

@@ -116,7 +116,7 @@ async def test_portable_metadata_remains_available_during_preparation(monkeypatc
         response = await client.post("/api/runs", headers=headers, json={"chat_id": "missing", "prompt": "Generate an image of a moon"})
         assert response.status_code == 409 and "Image creation" in response.json()["detail"]
         monkeypatch.setattr(api, "setup", SimpleNamespace(status=lambda: {
-            "models": [{"id": key, "ready": key in ("chat", "embedding")} for key in ("chat", *setup.CORE)],
+            "models": [{"id": key, "ready": key in ("chat", "embedding", "ocr")} for key in ("chat", *setup.CORE)],
         }))
         for filename in ("clip.wav", "clip.mp4"):
             response = await client.post("/api/uploads", headers=headers, files={"file": (filename, b"not media")})

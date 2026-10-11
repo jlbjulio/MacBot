@@ -3,3 +3,6 @@
 
 # Keep the checksum-pinned dependency file byte-for-byte across checkouts.
 bootstrap/requirements.txt -text
+
+# Preserve the upstream model license verbatim, including its whitespace.
+bootstrap/QWEN-IMAGE-LICENSE.txt -text -whitespace

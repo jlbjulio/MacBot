@@ -354,12 +354,23 @@ async def upload(file: UploadFile = File()):
     try:
         from .media import AUDIO_SUFFIXES, VIDEO_SUFFIXES, video_frames
         suffix = Path(name).suffix.lower()
-        details = {"sha256": __import__("hashlib").sha256(content).hexdigest(), "parser_version": "macbot-0.2"}
-        if suffix in AUDIO_SUFFIXES:
+        from .native_assets import fingerprint
+        settings = store.setting("settings", {"language": "en"})
+        parser_version = f"macbot-0.4-{fingerprint('ocr')}-{settings.get('language', 'en')}-{settings.get('whisper_model', 'base')}"
+        details = {"sha256": __import__("hashlib").sha256(content).hexdigest(), "parser_version": parser_version}
+        candidates = store.execute("SELECT u.*, d.data FROM uploads u JOIN upload_details d ON d.upload_id=u.id "
+            "JOIN index_state i ON i.upload_id=u.id WHERE i.chunks>0 AND i.error='' "
+            "AND json_extract(d.data,'$.sha256')=? AND json_extract(d.data,'$.parser_version')=? LIMIT 10",
+            (details["sha256"], parser_version))
+        cached = next((row for row in candidates if Path(row["name"]).suffix.lower() == suffix), None)
+        if cached:
+            kind, text = cached["kind"], cached["text"]
+            details = {**json.loads(cached["data"]), "reused_extraction": True}
+        elif suffix in AUDIO_SUFFIXES:
             kind = "audio"
             async with work_lock:
                 transcription = await asyncio.to_thread(transcribe_audio, path, store.setting("settings", {"language": "en"}))
-            text = "Audio transcript:\n" + transcription["text"] if transcription["text"] else "No speech was recognised. This is an audio attachment, not a transcript."
+            text = "\n\n".join(f"Audio segment {int(s['start'])}\n{s['text']}" for s in transcription["segments"]) if transcription["text"] else "No speech was recognised. This is an audio attachment, not a transcript."
             details.update(transcription)
         elif suffix in VIDEO_SUFFIXES:
             kind = "video"
@@ -380,7 +391,9 @@ async def upload(file: UploadFile = File()):
                 except Exception as error:
                     details["audio_note"] = f"No usable audio track: {type(error).__name__}"
         else:
-            kind, text = await asyncio.to_thread(extract, name, content)
+            async with work_lock:
+                await runtime.unload()
+                kind, text = await asyncio.to_thread(extract, name, content, store.directory)
     except Exception as error:
         path.unlink(missing_ok=True)
         raise HTTPException(400, str(error)[:300]) from error
@@ -390,10 +403,15 @@ async def upload(file: UploadFile = File()):
     if kind in ("document", "audio", "image", "video"):
         try:
             async with work_lock:
-                if kind == "document":
+                if cached:
+                    chunks = await asyncio.to_thread(retrieval.copy_upload, cached["id"], uid, name)
+                if not chunks and kind == "document":
                     chunks = await asyncio.to_thread(retrieval.index, uid, name, text)
-                else:
-                    chunks = await asyncio.to_thread(retrieval.index_media, uid, name, kind, path, text)
+                elif not chunks:
+                    if text:
+                        chunks = await asyncio.to_thread(retrieval.index, uid, name, text)
+                    chunks += await asyncio.to_thread(retrieval.index_media, uid, name, kind, path, text,
+                                                     details.get("segments", []))
             store.execute("INSERT OR REPLACE INTO index_state VALUES(?,?,?)", (uid, chunks, ""))
         except Exception as error:
             logger.exception("Document indexing failed")
@@ -442,8 +460,9 @@ def transcribe_audio(path, config):
     )
     if info.duration > 600:
         raise ValueError("Audio files are limited to ten minutes.")
+    segments = [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()} for s in segments]
     return {
-        "text": " ".join(s.text.strip() for s in segments).strip(),
+        "text": " ".join(s["text"] for s in segments).strip(), "segments": segments,
         "language": info.language,
         "duration": info.duration,
     }

@@ -5,9 +5,20 @@
     "license": "apache-2.0"
   },
   "image": {
-    "repo": "segmind/tiny-sd",
-    "revision": "cad0bd7495fa6c4bcca01b19a723dc91627fe84f",
-    "license": "creativeml-openrail-m"
+    "repo": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
+    "revision": "5d1f9f759ea877ae556cda88dbec958b62ad3809",
+    "license": "Qwen Research License",
+    "engine": "stable-diffusion.cpp",
+    "quantization": [
+      "Q2_K",
+      "Q4_K_M"
+    ],
+    "steps": 8,
+    "profiles": {
+      "compact": 8290346064,
+      "balanced": 10023773264
+    },
+    "license_url": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE"
   },
   "voice": {
     "repo": "rhasspy/piper-voices",
@@ -30,5 +41,13 @@
     "license": "Apache-2.0",
     "engine": "llama.cpp",
     "quantization": "Q4_K_M"
+  },
+  "ocr": {
+    "repo": "ggml-org/granite-docling-258M-GGUF",
+    "revision": "684c1800c5fbd614e29b4d1a82177e6c122af1f3",
+    "license": "Apache-2.0",
+    "engine": "llama.cpp",
+    "quantization": "Q8_0",
+    "bytes": 281687936
   }
 }

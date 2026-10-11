@@ -12,7 +12,7 @@ A local workspace for chat, files and creative projects. Built for Windows PCs (
 2. Open **MacBot.exe**. Keep the **MacBot** support folder beside it.
 3. Let first-time preparation finish. Downloads support pause, resume and retry, and reuse compatible cached files.
 
-You need Windows x64, [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/), internet for preparation and around **15 GB of free space**. Local chat and creation work offline afterward; web research and remote tools need internet. The executable is unsigned.
+You need Windows x64, [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/), internet for preparation and around **22 GB of free space**. Models download once and stay outside the release ZIP. Local chat and creation work offline afterward; web research and remote tools need internet. The executable is unsigned.
 
 ## What you can do
 
@@ -26,7 +26,11 @@ Choose a task beside the message box. Describe the content, style and format you
 
 Documents, workbooks and slides adapt their fonts, colours, spacing and layouts to your request.
 
-Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Large image exports are resized from a render of up to 512 pixels; generated speech is English. Review generated content before using it.
+Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Scans and embedded document images use local OCR; readable text and tables are extracted directly. Reattaching an unchanged file reuses its processed content.
+
+Images use **Qwen Image 2.1 Turbo**. Rendering adjusts to available hardware, with exports up to 2048 pixels; larger exports may be resized. Generated speech is English. Review generated content before using it.
+
+Qwen Image's license permits research and evaluation. Commercial use requires a separate license from Qwen; see the [model license](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE).
 
 ## Your workspace
 
@@ -43,7 +47,7 @@ The default chat model is **Qwen3.5 4B**, using Unsloth's Q4_K_M GGUF with llama
 | Desktop | Tauri, Rust, React, TypeScript, Vite and Windows WebView2 |
 | Backend | Python, FastAPI, Uvicorn, LangGraph and SQLite |
 | Local AI | Hugging Face, Unsloth GGUF, llama.cpp, Qwen3.5, EmbeddingGemma 2, Qdrant, PyTorch, Transformers and Sentence Transformers |
-| Image & voice | Tiny-SD/Diffusers, Piper, faster-whisper and RapidOCR |
+| Image, scanning & voice | Qwen Image 2.1 Turbo, stable-diffusion.cpp, Granite Docling, docling-core, Piper and faster-whisper |
 | Files | python-docx, ReportLab, openpyxl and python-pptx |
 | Tools & preparation | MCP, Node.js and uv |
 

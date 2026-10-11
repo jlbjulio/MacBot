@@ -30,3 +30,14 @@ def test_images_are_bounded_and_translated_to_embedded_media_only():
         assert resized.width == 768 and resized.height == 512
     with pytest.raises(ValueError):
         completion_body({"messages": [{"role": "user", "content": "", "images": ["https://example.com/image.png"]}]})
+
+
+def test_document_reader_receives_image_before_its_instruction():
+    picture = io.BytesIO()
+    Image.new("RGB", (900, 600), "white").save(picture, format="PNG")
+    request = completion_body({"purpose": "ocr", "messages": [{"role": "user",
+        "content": "Convert this page to docling.", "images": [base64.b64encode(picture.getvalue()).decode()]}]})
+    parts = request["messages"][0]["content"]
+    assert parts[0]["type"] == "image_url" and parts[1]["text"] == "Convert this page to docling."
+    assert request["temperature"] == 0 and request["repeat_penalty"] == 1
+    assert "chat_template_kwargs" not in request

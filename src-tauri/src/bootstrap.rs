@@ -541,14 +541,12 @@ pub fn ensure(
         state.phase("installing", 0, 0, "");
         let mut command = uv_command(root, &cache);
         command
-            .args(["pip", "install", "--python"])
+            .args(["pip", "sync", "--python"])
             .arg(python.join("python.exe"))
             .arg("--target")
             .arg(&site)
             .args([
                 "--require-hashes",
-                "--reinstall",
-                "--no-deps",
                 "--only-binary",
                 ":all:",
                 "--link-mode",
@@ -556,7 +554,6 @@ pub fn ensure(
                 "--index-strategy",
                 "unsafe-best-match",
                 "--no-config",
-                "-r",
             ])
             .arg(payload.join("requirements.txt"));
         run(&mut command)?;
@@ -602,6 +599,7 @@ pub fn ensure(
         &python,
         &root.join("runtime/node"),
         &root.join("runtime/llama"),
+        &root.join("runtime/diffusion"),
     ] {
         for file in fs::read_dir(root).map_err(|e| e.to_string())? {
             let file = file.map_err(|e| e.to_string())?;
@@ -630,8 +628,10 @@ pub fn ready(root: &Path) -> bool {
         "python/Lib/site-packages/piper/__init__.py",
         "node/node.exe",
         "python/app/chat-model.json",
+        "python/app/creation-models.json",
         "python/Lib/site-packages/transformers/__init__.py",
         "llama/llama-server.exe",
+        "diffusion/sd-cli.exe",
     ]
     .iter()
     .all(|p| root.join("runtime").join(p).is_file())

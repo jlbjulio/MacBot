@@ -143,7 +143,10 @@ def feature_routes(service):
                 if value["kind"] == "document":
                     chunks = await asyncio.to_thread(service.retrieval.index, identifier, value["name"], value["text"])
                 else:
-                    chunks = await asyncio.to_thread(service.retrieval.index_media, identifier, value["name"], value["kind"], value["path"], value["text"])
+                    chunks = await asyncio.to_thread(service.retrieval.index, identifier, value["name"], value["text"]) if value["text"] else 0
+                    details = service.store.execute("SELECT data FROM upload_details WHERE upload_id=?", (identifier,))
+                    segments = json.loads(details[0]["data"]).get("segments", []) if details else []
+                    chunks += await asyncio.to_thread(service.retrieval.index_media, identifier, value["name"], value["kind"], value["path"], value["text"], segments)
                 service.store.execute("INSERT OR REPLACE INTO index_state VALUES(?,?,?)", (identifier, chunks, ""))
             finally:
                 await asyncio.to_thread(service.retrieval.release_models)

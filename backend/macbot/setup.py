@@ -14,12 +14,12 @@ from fastapi import APIRouter, HTTPException
 
 from .assets import MODELS, VOICE_FILE, VOICE_PREFIX
 
-CORE = ("voice", "whisper", "embedding", "verifier", "image")
+CORE = ("voice", "whisper", "embedding", "verifier", "ocr", "image")
 LABELS = {"chat": "Chat and vision", "embedding": "Multimodal search", "image": "Image creation",
-          "voice": "Spoken audio", "verifier": "Research evidence checks", "whisper": "Speech recognition"}
+          "voice": "Spoken audio", "verifier": "Research evidence checks", "whisper": "Speech recognition", "ocr": "File reading"}
 DEPENDENCIES = {"chat": ("chat",), "research": ("chat", "verifier"), "image": ("chat", "image"),
                 "audio": ("chat", "voice"), "spreadsheet": ("chat",), "presentation": ("chat",),
-                "document": ("chat",), "tools": ("chat",), "attachments": ("embedding",),
+                "document": ("chat",), "tools": ("chat",), "attachments": ("embedding", "ocr"),
                 "dictation": ("whisper",), "read_aloud": ("voice",)}
 
 
@@ -27,12 +27,15 @@ def require_models(controller, feature, extra=()):
     if not os.environ.get("MACBOT_PORTABLE"):
         return
     ready = {item["id"]: item["ready"] for item in controller.status()["models"]}
-    missing = [LABELS[name] for name in dict.fromkeys((*DEPENDENCIES[feature], *extra)) if not ready[name]]
+    missing = [LABELS[name] for name in dict.fromkeys((*DEPENDENCIES[feature], *extra)) if not ready.get(name, False)]
     if missing:
         raise HTTPException(409, "Still preparing: " + ", ".join(missing) + ". Other ready features remain available.")
 
 
 def asset_ready(directory, name):
+    if name in ("ocr", "image"):
+        from .native_assets import native_ready
+        return native_ready(directory, name)
     target = directory / "models" / name
     marker = target / "macbot-model.json"
     try:
@@ -125,6 +128,9 @@ def download_file(url, target, size, digest, progress, stop, git_blob=False, can
 
 
 def download_asset(directory, name, progress=lambda *args: None, stop=None, reused=None):
+    if name in ("ocr", "image"):
+        from .native_assets import download_native
+        return download_native(directory, name, progress, stop, reused)
     from huggingface_hub import HfApi, hf_hub_url, try_to_load_from_cache
     stop = stop or threading.Event()
     if asset_ready(directory, name):

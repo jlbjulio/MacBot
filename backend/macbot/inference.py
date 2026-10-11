@@ -29,7 +29,7 @@ def engine_path():
     return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "MacBot/Development/llama/llama-server.exe"
 
 
-def normalize_messages(messages):
+def normalize_messages(messages, image_limit=768, image_first=False):
     from PIL import Image
     result = []
     for item in messages:
@@ -45,16 +45,22 @@ def normalize_messages(messages):
             with Image.open(io.BytesIO(base64.b64decode(encoded, validate=True))) as image:
                 if image.width * image.height > 16_000_000:
                     raise ValueError("Use an image with at most 16 megapixels.")
-                image.thumbnail((768, 768))
+                image.thumbnail((image_limit, image_limit))
                 buffer = io.BytesIO()
                 image.convert("RGB").save(buffer, format="JPEG", quality=90)
             uri = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
             parts.append({"type": "image_url", "image_url": {"url": uri}})
+        if images and image_first:
+            parts = parts[1:] + parts[:1]
         result.append({"role": item["role"], "content": parts if images else item["content"]})
     return result
 
 
 def completion_body(request):
+    if request.get("purpose") == "ocr":
+        return {"model": "macbot-ocr", "messages": normalize_messages(request["messages"], image_limit=1024, image_first=True),
+                "stream": True, "max_tokens": 8192, "temperature": 0.0, "top_p": 1.0,
+                "top_k": 0, "min_p": 0.0, "repeat_penalty": 1.0, "cache_prompt": False}
     effort = request.get("reasoning", "medium")
     if effort not in REASONING_BUDGETS:
         raise ValueError("Choose Low, Medium or High thinking.")
@@ -80,6 +86,7 @@ def main():
     import psutil
 
     source = Path(sys.argv[1])
+    purpose = sys.argv[2] if len(sys.argv) > 2 else "chat"
     parent = psutil.Process(os.getppid())
     parent_started = parent.create_time()
     server = None
@@ -118,13 +125,18 @@ def main():
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
-        arguments = [str(executable), "--model", str(source / "Qwen3.5-4B-Q4_K_M.gguf"),
-            "--mmproj", str(source / "mmproj-F16.gguf"), "--no-mmproj-offload", "--alias", "macbot-4b",
-            "--host", "127.0.0.1", "--port", str(port), "--ctx-size", "8192", "--parallel", "1",
+        ocr = purpose == "ocr"
+        arguments = [str(executable), "--model", str(source / ("model.gguf" if ocr else "Qwen3.5-4B-Q4_K_M.gguf")),
+            "--mmproj", str(source / ("vision.gguf" if ocr else "mmproj-F16.gguf")), "--alias", "macbot-ocr" if ocr else "macbot-4b",
+            "--host", "127.0.0.1", "--port", str(port), "--ctx-size", "16384" if ocr else "8192", "--parallel", "1",
             "--threads", str(max(1, min(6, (os.cpu_count() or 4) // 2))), "--batch-size", "256",
-            "--ubatch-size", "128", "--jinja", "--reasoning", "on", "--reasoning-format", "deepseek",
-            "--reasoning-budget", "256", "--no-reasoning-preserve", "--no-context-shift",
+            "--ubatch-size", "128", "--jinja", "--no-context-shift",
             "--no-webui", "--offline", "--log-verbosity", "2"]
+        if ocr:
+            arguments += ["--flash-attn", "off", "--fit", "off", "--special"]
+        else:
+            arguments += ["--no-mmproj-offload", "--reasoning", "on", "--reasoning-format", "deepseek",
+                          "--reasoning-budget", "256", "--no-reasoning-preserve"]
         # The key is passed through the environment, never exposed in process arguments or logs.
         environment = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_")}
         environment["LLAMA_API_KEY"] = key
@@ -134,7 +146,8 @@ def main():
             modes = ["0"] if os.environ.get("MACBOT_CHAT_CPU") == "1" else ["auto", "0"]
             ready = False
             for layers in modes:
-                server = subprocess.Popen(arguments + ["--n-gpu-layers", layers], cwd=executable.parent,
+                fallback = ["--no-mmproj-offload"] if ocr and layers == "0" else []
+                server = subprocess.Popen(arguments + ["--n-gpu-layers", layers] + fallback, cwd=executable.parent,
                     stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr,
                     env=environment, creationflags=flags)
                 deadline = time.monotonic() + 180

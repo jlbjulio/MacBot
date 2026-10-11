@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 import sys
 import threading
 import zipfile
@@ -12,14 +13,15 @@ sys.path.insert(0, str(ROOT / "backend"))
 from macbot.setup import download_file
 
 
-def prepare():
+def prepare(name="llama"):
     manifest = json.loads((ROOT / "bootstrap/engines.json").read_text())
-    engine = next(item for item in manifest["components"] if item["name"] == "llama")
-    folder = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "MacBot/Development/llama"
+    engine = next(item for item in manifest["components"] if item["name"] == name)
+    folder = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "MacBot/Development" / name
     folder.mkdir(parents=True, exist_ok=True)
-    def matches(record):
-        path = folder / record["path"]
-        if not path.resolve().is_relative_to(folder.resolve()):
+    def matches(record, location=None):
+        location = location or folder
+        path = location / record["path"]
+        if not path.resolve().is_relative_to(location.resolve()):
             raise ValueError("The engine manifest contains an invalid path.")
         if not path.is_file() or path.stat().st_size != record["bytes"]:
             return False
@@ -27,7 +29,14 @@ def prepare():
             return hashlib.file_digest(stream, "sha256").hexdigest() == record["sha256"]
     if all(matches(record) for record in engine["files"]):
         return
-    archive = folder.parent / "cache" / f"llama-{engine['version']}.zip"
+    existing = ROOT / "build/tools" / name
+    if all(matches(record, existing) for record in engine["files"]):
+        for record in engine["files"]:
+            destination = folder / record["path"]
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(existing / record["path"], destination)
+        return
+    archive = folder.parent / "cache" / f"{name}-{engine['version']}.zip"
     download_file(engine["url"], archive, engine["bytes"], engine["sha256"],
                   lambda *_: None, threading.Event())
     with zipfile.ZipFile(archive) as zipped:
@@ -45,4 +54,5 @@ def prepare():
 
 if __name__ == "__main__":
     prepare()
-    print("Local chat engine ready.")
+    prepare("diffusion")
+    print("Local chat and image engines ready.")

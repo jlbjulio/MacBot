@@ -3,19 +3,13 @@ from typing import Any, cast
 
 AUDIO_SUFFIXES = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac"}
 VIDEO_SUFFIXES = {".mp4", ".webm", ".mov", ".mkv"}
-_ocr = None
-
-
-def ocr_image(image):
-    global _ocr
-    if _ocr is None:
-        from rapidocr import RapidOCR
-        _ocr = RapidOCR()
-    result = _ocr(image)
-    texts, scores = getattr(result, "txts", None), getattr(result, "scores", None)
-    if texts is None or scores is None:
-        return ""
-    return "\n".join(text for text, score in zip(texts, scores) if score >= 0.5)
+def ocr_image(image, directory=None, session=None):
+    if session is not None:
+        return session.read(image)
+    from .ocr import DocumentOCR
+    from .store import data_directory
+    with DocumentOCR(directory or data_directory()) as reader:
+        return reader.read(image)
 
 
 def audio_waveform(path, maximum=600):
@@ -68,8 +62,10 @@ def video_frames(path, maximum=300, count=12):
     return frames, duration
 
 
-def scan_pdf(content, indices=None):
+def scan_pdf(content, indices=None, directory=None):
     import pypdfium2 as pdfium
+    from .ocr import DocumentOCR
+    from .store import data_directory
 
     document = pdfium.PdfDocument(content)
     try:
@@ -77,16 +73,17 @@ def scan_pdf(content, indices=None):
         if len(selected) > 30:
             raise ValueError("Scanned PDFs are limited to 30 pages.")
         pages = []
-        for index in selected:
-            page = document[index]
-            # PDFium accepts fractional scales; its bundled type stub declares an integer.
-            bitmap = cast(Any, page).render(scale=1.5)
-            try:
-                text = ocr_image(bitmap.to_pil())
-                pages.append(f"Page {index + 1}\n{text}")
-            finally:
-                bitmap.close()
-                page.close()
+        with DocumentOCR(directory or data_directory()) as reader:
+            for index in selected:
+                page = document[index]
+                scale = min(2.0, 1024 / max(page.get_size()))
+                bitmap = cast(Any, page).render(scale=scale)
+                try:
+                    text = reader.read(bitmap.to_pil())
+                    pages.append(f"Page {index + 1}\n{text}")
+                finally:
+                    bitmap.close()
+                    page.close()
         if indices is None and not any(page.split("\n", 1)[1].strip() for page in pages):
             raise ValueError("No readable text was found in this scan.")
         return "\n\n".join(pages)

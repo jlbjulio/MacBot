@@ -82,7 +82,10 @@ def build_graph(runtime, store, emit, retrieval=None, checkpointer=None):
             hits = await asyncio.to_thread(retrieval.search, state["prompt"], doc_ids)
             for i, hit in enumerate(hits, 1):
                 location = (
-                    f" · page {hit['page']}" if hit.get("page") else f" · chunk {hit['chunk'] + 1}"
+                    f" · page {hit['page']}" if hit.get("page") else
+                    f" · slide {hit['slide']}" if hit.get("slide") else
+                    f" · {hit['timestamp']}s" if hit.get("timestamp") is not None else
+                    f" · sheet {hit['sheet']}" if hit.get("sheet") else f" · chunk {hit['chunk'] + 1}"
                 )
                 context.append(f"[D{i}] {hit['name']}{location}\n{hit['text']}")
                 sources.append(

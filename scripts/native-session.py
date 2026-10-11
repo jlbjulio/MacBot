@@ -59,7 +59,7 @@ else:
     directory = output / ("engine-data" if "--engines" in sys.argv else "background-data" if "--background" in sys.argv else "setup-data" if "--setup" in sys.argv else f"final-{version}-data" if "--final" in sys.argv else "relocated-data" if "--relocated" in sys.argv else "data")
     # Use packaged model files while keeping QA conversations separate.
     (directory / "models").mkdir(parents=True, exist_ok=True)
-    source_models = Path(os.environ["LOCALAPPDATA"]) / "MacBot/Development/Data/models"
+    source_models = Path(os.environ.get("MACBOT_QA_MODEL_DIR", str(portable.parent / "MacBot/Data/models")))
     for model in ([] if "--setup" in sys.argv or "--background" in sys.argv else source_models.iterdir()):
         if model.name.startswith(".") or model.name.startswith("models--"):
             continue

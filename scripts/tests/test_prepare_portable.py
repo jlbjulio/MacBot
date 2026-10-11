@@ -72,11 +72,8 @@ class PinnedUvTests(unittest.TestCase):
         }
         self.binary(self.root / "bootstrap/engines.json", json.dumps(manifest).encode())
         self.binary(self.root / "backend/macbot/__init__.py", b"")
-        for name in ("desktop_entry.py", "model-manifest.json", "chat-model.json"):
+        for name in ("desktop_entry.py", "model-manifest.json", "chat-model.json", "creation-models.json"):
             self.binary(self.root / "backend" / name, b"")
-        python = self.root / "python/Scripts/python.exe"
-        for package in ("antlr4", "antlr4_python3_runtime-4.9.3.dist-info"):
-            self.binary(self.root / "python/Lib/site-packages" / package / "file.txt", b"package")
         program_files = self.root / "Program Files"
         self.binary(
             program_files / "Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC"
@@ -86,7 +83,6 @@ class PinnedUvTests(unittest.TestCase):
         with (
             patch.multiple(packaging, PORTABLE=self.target.parent,
                            PAYLOAD=self.root / "build/bootstrap-payload"),
-            patch.object(packaging.sys, "executable", str(python)),
             patch.object(packaging.shutil, "which", return_value=None),
             patch.dict(packaging.os.environ, {"ProgramFiles(x86)": str(program_files)}),
         ):

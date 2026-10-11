@@ -10,7 +10,7 @@ def watch():
     closed.set()
 threading.Thread(target=watch, daemon=True).start()
 import scipy.linalg  # noqa: E402,F401
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline  # noqa: E402,F401
+from sentence_transformers import SentenceTransformer  # noqa: E402,F401
 print("LIBRARIES_READY", flush=True)
 if not closed.wait(60):
     raise SystemExit("The parent signal was missed.")

@@ -3,7 +3,6 @@ import hashlib
 import json
 import os
 import shutil
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,12 +63,13 @@ def prepare():
     for stale in (app / "ollama-model.json", app / "macbot/persona.py",
                   TARGET / "bootstrap/app/ollama-model.json", TARGET / "bootstrap/app/macbot/persona.py"):
         stale.unlink(missing_ok=True)
-    for name in ("desktop_entry.py", "model-manifest.json", "chat-model.json"):
+    for name in ("desktop_entry.py", "model-manifest.json", "chat-model.json", "creation-models.json"):
         shutil.copy2(ROOT / "backend" / name, app / name)
-    site = PAYLOAD / "site-packages"
-    for name in ("antlr4", "antlr4_python3_runtime-4.9.3.dist-info"):
-        shutil.copytree(Path(sys.executable).parents[1] / "Lib/site-packages" / name, site / name,
-                        dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    for generated in (PAYLOAD / "site-packages", TARGET / "bootstrap/site-packages"):
+        if generated.exists():
+            if generated.is_symlink() or not generated.resolve().is_relative_to(ROOT.resolve()):
+                raise RuntimeError("Unexpected generated parser folder.")
+            shutil.rmtree(generated)
     shutil.copy2(ROOT / "bootstrap/requirements.txt", PAYLOAD / "requirements.txt")
     if digest(PAYLOAD / "requirements.txt") != manifest["requirements_sha256"]:
         raise RuntimeError("The requirements and engine pins do not match.")
