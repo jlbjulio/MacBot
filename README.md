@@ -26,7 +26,7 @@ Choose a task beside the message box. Describe the content, style and format you
 
 Documents, workbooks and slides adapt their fonts, colours, spacing and layouts to your request.
 
-Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Scans and embedded document images use local OCR; readable text and tables are extracted directly. Reattaching an unchanged file reuses its processed content.
+Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Granite Docling reads scans and embedded document images locally; readable text and tables are extracted directly. Reattaching an unchanged file reuses its processed content.
 
 Images use **Qwen Image 2.1 Turbo**. Rendering adjusts to available hardware, with exports up to 2048 pixels; larger exports may be resized. Generated speech is English. Review generated content before using it.
 
@@ -47,7 +47,7 @@ The default chat model is **Qwen3.5 4B**, using Unsloth's Q4_K_M GGUF with llama
 | Desktop | Tauri, Rust, React, TypeScript, Vite and Windows WebView2 |
 | Backend | Python, FastAPI, Uvicorn, LangGraph and SQLite |
 | Local AI | Hugging Face, Unsloth GGUF, llama.cpp, Qwen3.5, EmbeddingGemma 2, Qdrant, PyTorch, Transformers and Sentence Transformers |
-| Image, scanning & voice | Qwen Image 2.1 Turbo, stable-diffusion.cpp, Granite Docling, docling-core, Piper and faster-whisper |
+| Image, scanning & voice | Qwen Image 2.1 Turbo, stable-diffusion.cpp, Granite Docling, Piper and faster-whisper |
 | Files | python-docx, ReportLab, openpyxl and python-pptx |
 | Tools & preparation | MCP, Node.js and uv |
 

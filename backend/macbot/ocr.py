@@ -23,6 +23,8 @@ class DocumentOCR:
         if image.width * image.height > 25_000_000:
             raise ValueError("Images are limited to 25 megapixels.")
         image = image.convert("RGB")
+        if all(low == high for low, high in image.getextrema()):
+            return ""
         image.thumbnail((1024, 1024))
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")

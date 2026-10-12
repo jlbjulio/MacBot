@@ -29,7 +29,7 @@ def engine_path():
     return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "MacBot/Development/llama/llama-server.exe"
 
 
-def normalize_messages(messages, image_limit=768, image_first=False):
+def normalize_messages(messages, image_limit=768, image_first=False, lossless=False):
     from PIL import Image
     result = []
     for item in messages:
@@ -47,8 +47,8 @@ def normalize_messages(messages, image_limit=768, image_first=False):
                     raise ValueError("Use an image with at most 16 megapixels.")
                 image.thumbnail((image_limit, image_limit))
                 buffer = io.BytesIO()
-                image.convert("RGB").save(buffer, format="JPEG", quality=90)
-            uri = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+                image.convert("RGB").save(buffer, format="PNG" if lossless else "JPEG", quality=90)
+            uri = ("data:image/png;base64," if lossless else "data:image/jpeg;base64,") + base64.b64encode(buffer.getvalue()).decode("ascii")
             parts.append({"type": "image_url", "image_url": {"url": uri}})
         if images and image_first:
             parts = parts[1:] + parts[:1]
@@ -58,7 +58,7 @@ def normalize_messages(messages, image_limit=768, image_first=False):
 
 def completion_body(request):
     if request.get("purpose") == "ocr":
-        return {"model": "macbot-ocr", "messages": normalize_messages(request["messages"], image_limit=1024, image_first=True),
+        return {"model": "macbot-ocr", "messages": normalize_messages(request["messages"], image_limit=1024, image_first=True, lossless=True),
                 "stream": True, "max_tokens": 8192, "temperature": 0.0, "top_p": 1.0,
                 "top_k": 0, "min_p": 0.0, "repeat_penalty": 1.0, "cache_prompt": False}
     effort = request.get("reasoning", "medium")
@@ -128,7 +128,7 @@ def main():
         ocr = purpose == "ocr"
         arguments = [str(executable), "--model", str(source / ("model.gguf" if ocr else "Qwen3.5-4B-Q4_K_M.gguf")),
             "--mmproj", str(source / ("vision.gguf" if ocr else "mmproj-F16.gguf")), "--alias", "macbot-ocr" if ocr else "macbot-4b",
-            "--host", "127.0.0.1", "--port", str(port), "--ctx-size", "16384" if ocr else "8192", "--parallel", "1",
+            "--host", "127.0.0.1", "--port", str(port), "--ctx-size", "8192", "--parallel", "1",
             "--threads", str(max(1, min(6, (os.cpu_count() or 4) // 2))), "--batch-size", "256",
             "--ubatch-size", "128", "--jinja", "--no-context-shift",
             "--no-webui", "--offline", "--log-verbosity", "2"]

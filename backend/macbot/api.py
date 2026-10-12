@@ -126,7 +126,7 @@ class ModelDownload(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "0.3.0"}
+    return {"status": "ok", "version": "0.4.1"}
 
 
 @app.get("/api/models")
@@ -393,6 +393,7 @@ async def upload(file: UploadFile = File()):
         else:
             async with work_lock:
                 await runtime.unload()
+                await asyncio.to_thread(retrieval.release_models)
                 kind, text = await asyncio.to_thread(extract, name, content, store.directory)
     except Exception as error:
         path.unlink(missing_ok=True)
