@@ -62,31 +62,39 @@ def video_frames(path, maximum=300, count=12):
     return frames, duration
 
 
+def read_pdf_page(document, index, reader):
+    page = document[index]
+    bitmap = None
+    try:
+        scale = min(2.0, 1024 / max(page.get_size()))
+        bitmap = cast(Any, page).render(scale=scale)
+        with bitmap.to_pil() as image:
+            return reader.read(image)
+    finally:
+        if bitmap is not None:
+            bitmap.close()
+        page.close()
+
+
 def scan_pdf(content, indices=None, directory=None):
     import pypdfium2 as pdfium
     from .ocr import DocumentOCR
     from .store import data_directory
+    from .documents import append_text
 
     document = pdfium.PdfDocument(content)
     try:
-        selected = list(range(len(document))) if indices is None else indices
-        if len(selected) > 30:
-            raise ValueError("Scanned PDFs are limited to 30 pages.")
-        pages = []
+        selected = range(len(document)) if indices is None else indices
+        output = io.StringIO()
+        readable = False
         with DocumentOCR(directory or data_directory()) as reader:
             for index in selected:
-                page = document[index]
-                scale = min(2.0, 1024 / max(page.get_size()))
-                bitmap = cast(Any, page).render(scale=scale)
-                try:
-                    text = reader.read(bitmap.to_pil())
-                    pages.append(f"Page {index + 1}\n{text}")
-                finally:
-                    bitmap.close()
-                    page.close()
-        if indices is None and not any(page.split("\n", 1)[1].strip() for page in pages):
+                text = read_pdf_page(document, index, reader)
+                append_text(output, f"Page {index + 1}\n{text}", separator="\n\n")
+                readable |= bool(text.strip())
+        if indices is None and not readable:
             raise ValueError("No readable text was found in this scan.")
-        return "\n\n".join(pages)
+        return output.getvalue()
     finally:
         document.close()
 

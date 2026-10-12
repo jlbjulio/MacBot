@@ -1,5 +1,6 @@
 import re
 import threading
+from itertools import islice
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -33,11 +34,12 @@ class RetrievalIndex:
 
     def chunks(self, text):
         assert self.tokenizer is not None
-        markers = list(re.finditer(r"(?m)^(Page|Página|Slide|Audio segment) (\d+)\n|^Sheet: ([^\n]+)\n", text))
-        boundaries = sorted({0, len(text), *(m.start() for m in markers)})
+        markers = {m.start(): m for m in re.finditer(r"(?m)^(Page|Página|Slide|Audio segment) (\d+)\n|^Sheet: ([^\n]+)\n", text)}
+        boundaries = sorted({0, len(text), *markers})
+        marker = None
         for left_boundary, right_boundary in zip(boundaries, boundaries[1:]):
             section = text[left_boundary:right_boundary]
-            marker = next((m for m in reversed(markers) if m.start() <= left_boundary), None)
+            marker = markers.get(left_boundary, marker)
             encoded = self.tokenizer.encode(section, add_special_tokens=False)
             for start in range(0, len(encoded.ids), 272):
                 offsets = encoded.offsets[start:start + 320]
@@ -58,23 +60,24 @@ class RetrievalIndex:
         with self.lock:
             self.load()
             assert self.client is not None
-            chunks = list(self.chunks(text))
-            for start in range(0, len(chunks), 16):
-                batch = chunks[start : start + 16]
+            chunks = iter(self.chunks(text))
+            count = 0
+            while batch := list(islice(chunks, 16)):
                 assert self.gemma is not None
                 vectors = self.gemma.encode([chunk["text"] for chunk in batch])
                 self.client.upsert(
                     self.collection,
                     points=[
                         models.PointStruct(
-                            id=str(uuid5(NAMESPACE_URL, f"{uid}:{start + i}")),
+                            id=str(uuid5(NAMESPACE_URL, f"{uid}:{count + i}")),
                             vector=vector.tolist(),
-                            payload={**chunk, "upload_id": uid, "name": name, "chunk": start + i},
+                            payload={**chunk, "upload_id": uid, "name": name, "chunk": count + i},
                         )
                         for i, (chunk, vector) in enumerate(zip(batch, vectors))
                     ],
                 )
-            return len(chunks)
+                count += len(batch)
+            return count
 
     def search(self, query, uploads, limit=6):
         if not uploads:

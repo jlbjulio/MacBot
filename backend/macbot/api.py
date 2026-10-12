@@ -126,7 +126,7 @@ class ModelDownload(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "0.4.1"}
+    return {"status": "ok", "version": "0.4.2"}
 
 
 @app.get("/api/models")
@@ -356,7 +356,7 @@ async def upload(file: UploadFile = File()):
         suffix = Path(name).suffix.lower()
         from .native_assets import fingerprint
         settings = store.setting("settings", {"language": "en"})
-        parser_version = f"macbot-0.4-{fingerprint('ocr')}-{settings.get('language', 'en')}-{settings.get('whisper_model', 'base')}"
+        parser_version = f"macbot-0.4-fulltext-1-{fingerprint('ocr')}-{settings.get('language', 'en')}-{settings.get('whisper_model', 'base')}"
         details = {"sha256": __import__("hashlib").sha256(content).hexdigest(), "parser_version": parser_version}
         candidates = store.execute("SELECT u.*, d.data FROM uploads u JOIN upload_details d ON d.upload_id=u.id "
             "JOIN index_state i ON i.upload_id=u.id WHERE i.chunks>0 AND i.error='' "

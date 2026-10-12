@@ -2,6 +2,7 @@ import io
 from types import SimpleNamespace
 
 from PIL import Image
+import pytest
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
@@ -86,3 +87,132 @@ def test_audio_segments_keep_their_own_transcript(tmp_path, monkeypatch):
     assert index.index_media("audio", "meeting.wav", "audio", tmp_path / "meeting.wav", "whole transcript", segments) == 2
     assert saved[0].payload["text"] == "Opening remarks"
     assert saved[1].payload["text"] == "Closing balance 837.29" and saved[1].payload["timestamp"] == 30
+
+
+def test_complete_book_keeps_the_final_page_and_retrieval_location(tmp_path):
+    from reportlab.pdfgen.canvas import Canvas
+
+    content = io.BytesIO()
+    canvas = Canvas(content)
+    for page in range(1, 311):
+        canvas.setFont("Helvetica", 8)
+        for line in range(28):
+            canvas.drawString(36, 780 - line * 20, f"Chapter {page}: " + "Readable book content. " * 3)
+        if page == 310:
+            canvas.drawString(36, 190, "Final appendix total 837.29")
+        canvas.showPage()
+    canvas.save()
+    text = extract("book.pdf", content.getvalue(), tmp_path)[1]
+    assert len(text) > 200_000 and text.rstrip().endswith("Final appendix total 837.29")
+    index = RetrievalIndex(tmp_path)
+    index.tokenizer = Tokenizer(WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
+    index.tokenizer.pre_tokenizer = Whitespace()
+    final = next(chunk for chunk in index.chunks(text) if "Final appendix total" in chunk["text"])
+    assert final["page"] == 310
+
+
+def test_long_scan_reuses_one_reader_and_keeps_every_page(tmp_path, monkeypatch):
+    from reportlab.pdfgen.canvas import Canvas
+    from macbot import ocr
+    from macbot.media import scan_pdf
+
+    counts = {"sessions": 0, "pages": 0, "closed": 0}
+    class Reader:
+        def __init__(self, *args):
+            counts["sessions"] += 1
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            counts["closed"] += 1
+        def read(self, image):
+            counts["pages"] += 1
+            return f"Recognized scan {counts['pages']}"
+    monkeypatch.setattr(ocr, "DocumentOCR", Reader)
+    content = io.BytesIO()
+    canvas = Canvas(content)
+    for _ in range(42):
+        canvas.rect(36, 36, 10, 10, fill=1)
+        canvas.showPage()
+    canvas.save()
+    text = extract("scanned-book.pdf", content.getvalue(), tmp_path)[1]
+    assert "Page 42\n" in text and text.rstrip().endswith("Recognized scan 42")
+    assert counts == {"sessions": 1, "pages": 42, "closed": 1}
+    counts.update(sessions=0, pages=0, closed=0)
+    text = scan_pdf(content.getvalue(), directory=tmp_path)
+    assert "Page 42\n" in text and counts == {"sessions": 1, "pages": 42, "closed": 1}
+
+
+def test_office_keeps_content_beyond_old_limits_in_source_order(tmp_path, monkeypatch):
+    from docx import Document
+    from openpyxl import Workbook
+    from pptx import Presentation
+    from macbot import ocr
+
+    class Reader:
+        def __init__(self, *args):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self, image):
+            return "Embedded scan marker"
+    monkeypatch.setattr(ocr, "DocumentOCR", Reader)
+    document = Document()
+    document.add_paragraph("Before the table")
+    document.add_table(rows=1, cols=1).cell(0, 0).text = "Table in source order"
+    document.add_paragraph("After the table")
+    for _ in range(30):
+        document.add_paragraph("Full document content. " * 400)
+    for color in range(31):
+        picture = io.BytesIO()
+        Image.new("RGB", (16, 16), (color, 0, 0)).save(picture, format="PNG")
+        document.add_picture(io.BytesIO(picture.getvalue()))
+    document.add_paragraph("Final document paragraph")
+    content = io.BytesIO()
+    document.save(content)
+    text = extract("complete.docx", content.getvalue(), tmp_path)[1]
+    assert len(text) > 200_000 and "Final document paragraph" in text
+    assert text.index("Before the table") < text.index("Table in source order") < text.index("After the table")
+    assert text.count("Embedded scan marker") == 31
+    deck = Presentation()
+    for number in range(101):
+        slide = deck.slides.add_slide(deck.slide_layouts[0])
+        slide.shapes.title.text = f"Section {number + 1}"
+    content = io.BytesIO()
+    deck.save(content)
+    assert "Slide 101\nSection 101" in extract("complete.pptx", content.getvalue(), tmp_path)[1]
+    workbook = Workbook()
+    workbook.active.cell(1001, 51, "Last row and column marker")
+    content = io.BytesIO()
+    workbook.save(content)
+    assert "Last row and column marker" in extract("complete.xlsx", content.getvalue(), tmp_path)[1]
+
+
+def test_extraction_rejects_unsafe_expansion_instead_of_cutting_text(tmp_path, monkeypatch):
+    from macbot import documents
+
+    monkeypatch.setattr(documents, "MAX_EXTRACTED_CHARACTERS", 32)
+    with pytest.raises(ValueError, match="content has not been truncated"):
+        extract("too-large.txt", b"unbounded content " * 10, tmp_path)
+
+
+def test_index_saves_batches_before_consuming_the_whole_document(tmp_path, monkeypatch):
+    import numpy as np
+
+    index = RetrievalIndex(tmp_path)
+    consumed, saved = [], []
+    def chunks(text):
+        for number in range(40):
+            consumed.append(number)
+            yield {"text": f"Evidence {number}", "page": number + 1, "offset": number}
+    def save(collection, points):
+        if not saved:
+            assert len(consumed) == 16
+        saved.extend(points)
+    index.client = SimpleNamespace(upsert=save)
+    index.gemma = SimpleNamespace(encode=lambda values: [np.array([1.0, 0.0]) for _ in values])
+    monkeypatch.setattr(index, "chunks", chunks)
+    assert index.index("book", "book.pdf", "") == 40
+    assert len({point.id for point in saved}) == 40
+    assert saved[-1].payload["page"] == 40 and saved[-1].payload["chunk"] == 39

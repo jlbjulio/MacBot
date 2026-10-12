@@ -28,6 +28,8 @@ Documents, workbooks and slides adapt their fonts, colours, spacing and layouts 
 
 Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Granite Docling reads scans and embedded document images locally; readable text and tables are extracted directly. Reattaching an unchanged file reuses its processed content.
 
+Long documents are read page by page and indexed in batches. Extraction keeps the complete text; unusually large expanded content is rejected explicitly to protect memory.
+
 Images use **Qwen Image 2.1 Turbo**. Rendering adjusts to available hardware, with exports up to 2048 pixels; larger exports may be resized. Generated speech is English. Review generated content before using it.
 
 Qwen Image's license permits research and evaluation. Commercial use requires a separate license from Qwen; see the [model license](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE).
