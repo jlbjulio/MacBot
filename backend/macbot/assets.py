@@ -3,8 +3,8 @@ import threading
 
 MODELS = {
     "embedding": ("google/embeddinggemma-2", "914f7f89142e33e77833254d9c9b90c3cef7303b"),
-    "image": ("unsloth/Qwen-Image-2.1-Turbo-GGUF", "5d1f9f759ea877ae556cda88dbec958b62ad3809"),
-    "ocr": ("ggml-org/granite-docling-258M-GGUF", "684c1800c5fbd614e29b4d1a82177e6c122af1f3"),
+    "image": ("unsloth/ERNIE-Image-Turbo-GGUF", "a38270280633a5d318a9f51c18ef95eefb07c423"),
+    "ocr": ("PaddlePaddle/PaddleOCR-VL-1.6-GGUF", "511b09642bb324401f15f97cc23bc67e8f0a291d"),
     "voice": ("rhasspy/piper-voices", "c10ece1aade47bb51c153c893d14e5bf8e5b7117"),
     "verifier": ("cross-encoder/nli-deberta-v3-small", "fa2804872c3b4bd748f38c0185cc85775361e735"),
     "whisper": ("Systran/faster-whisper-base", "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66"),

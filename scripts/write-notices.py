@@ -32,7 +32,6 @@ notice = {"models": json.loads((root / "backend/model-manifest.json").read_text(
           "downloaded_python_packages": sorted(packages, key=lambda value: value["package"].lower()), "frontend_packages": frontend,
           "runtimes": {**versions, "Python": "3.11.16", "Tauri": "2 (versions pinned in src-tauri/Cargo.lock)"},
           "notes": ["Engines, Python libraries and models are prepared on first launch and retain their own licenses.",
-                    "Qwen Image 2.1 Turbo uses the Qwen Research License; research/evaluation only without a separate commercial license.",
                     "Python libraries, including Piper, are installed directly from their publishers on first launch; they are not bundled in this ZIP.",
                     "The bundled uv 0.12.21 preparation tool is MIT/Apache-2.0; its license texts are under bootstrap.",
                     "Python package license files are retained in runtime/python/Lib/site-packages; Node retains its notices.",
@@ -40,8 +39,7 @@ notice = {"models": json.loads((root / "backend/model-manifest.json").read_text(
 (notices / "THIRD-PARTY.json").write_text(json.dumps(notice, indent=2), encoding="utf-8")
 (notices / "LICENSE").write_bytes((root / "LICENSE").read_bytes())
 (notices / "LLAMA-MIT.txt").write_bytes((root / "bootstrap/LLAMA-MIT.txt").read_bytes())
-for name in ("DIFFUSION-MIT.txt", "QWEN-IMAGE-LICENSE.txt"):
-    (notices / name).write_bytes((root / "bootstrap" / name).read_bytes())
+(notices / "DIFFUSION-MIT.txt").write_bytes((root / "bootstrap/DIFFUSION-MIT.txt").read_bytes())
 old_microsoft_notice = target / "MICROSOFT-RUNTIME.txt"
 if old_microsoft_notice.is_file():
     old_microsoft_notice.replace(notices / old_microsoft_notice.name)

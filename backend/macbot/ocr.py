@@ -4,6 +4,9 @@ import io
 
 from .runtime import LlamaRuntime, MODEL_NAME
 
+# PaddleOCR-VL's vision encoder resizes larger inputs to this budget; sending more only costs time.
+MAX_PIXELS = 1_003_520
+
 
 class DocumentOCR:
     """Reuse one native OCR model for the pages of a single attachment."""
@@ -20,12 +23,16 @@ class DocumentOCR:
 
     def read(self, image):
         import hashlib
+        from PIL import Image
         if image.width * image.height > 25_000_000:
             raise ValueError("Images are limited to 25 megapixels.")
         image = image.convert("RGB")
         if all(low == high for low, high in image.getextrema()):
             return ""
-        image.thumbnail((1024, 1024))
+        if image.width * image.height > MAX_PIXELS:
+            scale = (MAX_PIXELS / (image.width * image.height)) ** 0.5
+            image = image.resize((max(1, int(image.width * scale)), max(1, int(image.height * scale))),
+                                 Image.Resampling.LANCZOS)
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         data = buffer.getvalue()
@@ -33,18 +40,11 @@ class DocumentOCR:
         if digest in self.cache:
             return self.cache[digest]
         async def recognize():
-            messages = [{"role": "user", "content": "Convert this page to docling.",
-                         "images": [base64.b64encode(data).decode("ascii")]}]
+            messages = [{"role": "user", "content": "OCR:", "images": [base64.b64encode(data).decode("ascii")]}]
             return "".join([part async for part in self.runtime.stream(MODEL_NAME, messages)])
         text = self.runner.run(recognize()).strip()
         if len(text) > 100_000:
             raise ValueError("The scanned page exceeds the text limit.")
-        if "<doctag>" not in text or "</doctag>" not in text:
-            raise ValueError("The document reader returned incomplete content. Try a clearer scan or a smaller page.")
-        from docling_core.types.doc import DoclingDocument
-        from docling_core.types.doc.document import DocTagsDocument
-        document = DoclingDocument.load_from_doctags(DocTagsDocument.from_doctags_and_image_pairs([text], [image]))
-        text = document.export_to_markdown().replace("<!-- image -->", "").strip()
         self.cache[digest] = text
         return text
 

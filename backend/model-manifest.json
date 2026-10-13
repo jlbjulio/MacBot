@@ -5,20 +5,20 @@
     "license": "apache-2.0"
   },
   "image": {
-    "repo": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
-    "revision": "5d1f9f759ea877ae556cda88dbec958b62ad3809",
-    "license": "Qwen Research License",
+    "repo": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "revision": "a38270280633a5d318a9f51c18ef95eefb07c423",
+    "license": "apache-2.0",
     "engine": "stable-diffusion.cpp",
     "quantization": [
-      "Q2_K",
-      "Q4_K_M"
+      "Q4_K_M",
+      "Q6_K"
     ],
     "steps": 8,
     "profiles": {
-      "compact": 8290346064,
-      "balanced": 10023773264
+      "compact": 7501835796,
+      "balanced": 9272978964
     },
-    "license_url": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE"
+    "license_url": "https://huggingface.co/baidu/ERNIE-Image-Turbo"
   },
   "voice": {
     "repo": "rhasspy/piper-voices",
@@ -43,11 +43,10 @@
     "quantization": "Q4_K_M"
   },
   "ocr": {
-    "repo": "ggml-org/granite-docling-258M-GGUF",
-    "revision": "684c1800c5fbd614e29b4d1a82177e6c122af1f3",
+    "repo": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
+    "revision": "511b09642bb324401f15f97cc23bc67e8f0a291d",
     "license": "Apache-2.0",
     "engine": "llama.cpp",
-    "quantization": "Q8_0",
-    "bytes": 281687936
+    "bytes": 1817541447
   }
 }

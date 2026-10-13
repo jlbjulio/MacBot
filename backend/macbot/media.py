@@ -66,7 +66,7 @@ def read_pdf_page(document, index, reader):
     page = document[index]
     bitmap = None
     try:
-        scale = min(2.0, 1024 / max(page.get_size()))
+        scale = min(2.0, 1400 / max(page.get_size()))
         bitmap = cast(Any, page).render(scale=scale)
         with bitmap.to_pil() as image:
             return reader.read(image)

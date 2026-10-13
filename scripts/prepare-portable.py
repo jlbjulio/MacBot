@@ -61,7 +61,9 @@ def prepare():
     for source in (ROOT / "backend/macbot").glob("*.py"):
         shutil.copy2(source, app / "macbot" / source.name)
     for stale in (app / "ollama-model.json", app / "macbot/persona.py",
-                  TARGET / "bootstrap/app/ollama-model.json", TARGET / "bootstrap/app/macbot/persona.py"):
+                  TARGET / "bootstrap/app/ollama-model.json", TARGET / "bootstrap/app/macbot/persona.py",
+                  PAYLOAD / "QWEN-IMAGE-LICENSE.txt", TARGET / "bootstrap/QWEN-IMAGE-LICENSE.txt",
+                  TARGET / "licenses/QWEN-IMAGE-LICENSE.txt"):
         stale.unlink(missing_ok=True)
     for name in ("desktop_entry.py", "model-manifest.json", "chat-model.json", "creation-models.json"):
         shutil.copy2(ROOT / "backend" / name, app / name)

@@ -127,7 +127,8 @@ class LlamaRuntime:
                     if value.get("error"):
                         raise ValueError(value["error"])
                     if value.get("done"):
-                        if not received:
+                        # A page without text is a valid OCR result.
+                        if not received and self.purpose != "ocr":
                             raise ValueError("The model did not produce an answer. Try again or reduce the task size.")
                         break
                     if value.get("token"):

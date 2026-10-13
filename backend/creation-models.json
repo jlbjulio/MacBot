@@ -1,89 +1,88 @@
 {
   "image": {
-    "repo": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
-    "revision": "5d1f9f759ea877ae556cda88dbec958b62ad3809",
-    "license": "qwen-research",
+    "repo": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "revision": "a38270280633a5d318a9f51c18ef95eefb07c423",
+    "license": "apache-2.0",
     "files": [
       {
-        "repo": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
-        "revision": "b93a7ee713758252c555be4210c00540df954dc2",
-        "source": "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf",
+        "repo": "unsloth/Ministral-3-3B-Instruct-2512-GGUF",
+        "revision": "7564922f37fa5bbb62b87f09a55c12f1f91d7a6a",
+        "source": "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
         "path": "encoder.gguf",
-        "size": 5148699488,
-        "digest": "e3d1a6e87c5cb31e054f2c3bc0dd82ffde052f613de5eef3665b7bd33c9b703e",
+        "size": 2146497824,
+        "digest": "fd46fc371ff0509bfa8657ac956b7de8534d7d9baaa4947975c0648c3aa397f4",
         "git_blob": false
       },
       {
-        "repo": "unsloth/Qwen-Image-2.1-FP8",
-        "revision": "bb21a8ba7f0371c19ad1f72c82a5e8fc10f39939",
-        "source": "vae/qwen_image_2.1_vae_bf16.safetensors",
+        "repo": "Comfy-Org/ERNIE-Image",
+        "revision": "82fe29a5cd056f8b1deebc50570f125bcd4f4bea",
+        "source": "vae/flux2-vae.safetensors",
         "path": "vae.safetensors",
-        "size": 675508656,
-        "digest": "71879ffd5321e6d10c3c87513e2b474b1252efa7f3dec2969214a9bf06a6dd5c",
+        "size": 336213556,
+        "digest": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
         "git_blob": false
       }
     ],
     "profiles": {
       "compact": [
         {
-          "repo": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
-          "revision": "5d1f9f759ea877ae556cda88dbec958b62ad3809",
-          "source": "qwen-image-2.1-turbo-Q2_K.gguf",
+          "repo": "unsloth/ERNIE-Image-Turbo-GGUF",
+          "revision": "a38270280633a5d318a9f51c18ef95eefb07c423",
+          "source": "ernie-image-turbo-Q4_K_M.gguf",
           "path": "diffusion-compact.gguf",
-          "size": 2466137920,
-          "digest": "19c0c8aba44d7dbd760e0d916e3eae8dcc285244cbeca98c34aa0e59c32fb709",
+          "size": 5019124416,
+          "digest": "ed3e035b631da47b0469b314dcce0afc3618fc9386f1af3d3e28710181e21d93",
           "git_blob": false
         }
       ],
       "balanced": [
         {
-          "repo": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
-          "revision": "5d1f9f759ea877ae556cda88dbec958b62ad3809",
-          "source": "qwen-image-2.1-turbo-Q4_K_M.gguf",
+          "repo": "unsloth/ERNIE-Image-Turbo-GGUF",
+          "revision": "a38270280633a5d318a9f51c18ef95eefb07c423",
+          "source": "ernie-image-turbo-Q6_K.gguf",
           "path": "diffusion-balanced.gguf",
-          "size": 4199565120,
-          "digest": "8940e8b522af886e0c0f5afddf720e82dd223cb9a43580b5f61c4d740452ac20",
+          "size": 6790267584,
+          "digest": "ce2986e3ae22296efce52514bc01401138742bc3594ab16ad269a3b4d92ab4f7",
           "git_blob": false
         }
       ]
     },
     "recipe": {
       "steps": 8,
-      "cfg": 1.0,
-      "sigmas": [
-        1.0,
-        0.978453,
-        0.95418,
-        0.926626,
-        0.89508,
-        0.845148,
-        0.704534,
-        0.414568
-      ]
+      "cfg": 1.0
     }
   },
   "ocr": {
-    "repo": "ggml-org/granite-docling-258M-GGUF",
-    "revision": "684c1800c5fbd614e29b4d1a82177e6c122af1f3",
+    "repo": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
+    "revision": "511b09642bb324401f15f97cc23bc67e8f0a291d",
     "license": "apache-2.0",
     "files": [
       {
-        "repo": "ggml-org/granite-docling-258M-GGUF",
-        "revision": "684c1800c5fbd614e29b4d1a82177e6c122af1f3",
-        "source": "granite-docling-258M-Q8_0.gguf",
+        "repo": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
+        "revision": "511b09642bb324401f15f97cc23bc67e8f0a291d",
+        "source": "PaddleOCR-VL-1.6-GGUF.gguf",
         "path": "model.gguf",
-        "size": 177918144,
-        "digest": "b687245c212b59da938e411e2d4485596cbaeed1ae52706582ac38ed6a970f76",
+        "size": 935769056,
+        "digest": "f3ae46ec885050acf4b3d31944431e1fd90d50664fb09126af4a3c050ba14ee8",
         "git_blob": false
       },
       {
-        "repo": "ggml-org/granite-docling-258M-GGUF",
-        "revision": "684c1800c5fbd614e29b4d1a82177e6c122af1f3",
-        "source": "mmproj-granite-docling-258M-Q8_0.gguf",
+        "repo": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
+        "revision": "511b09642bb324401f15f97cc23bc67e8f0a291d",
+        "source": "PaddleOCR-VL-1.6-GGUF-mmproj.gguf",
         "path": "vision.gguf",
-        "size": 103769792,
-        "digest": "3d440e65a91e640dc0a53897ad7897700c39324802aaff2072232b6f21d0cadb",
+        "size": 881770560,
+        "digest": "204d757d7610d9b3faab10d506d69e5b244e32bf765e2bab2d0167e65e0a058a",
         "git_blob": false
+      },
+      {
+        "repo": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
+        "revision": "511b09642bb324401f15f97cc23bc67e8f0a291d",
+        "source": "chat_template.jinja",
+        "path": "template.jinja",
+        "size": 1831,
+        "digest": "2755cf9e4ff507cd56889585720934092b058513",
+        "git_blob": true
       }
     ]
   }

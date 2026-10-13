@@ -26,13 +26,13 @@ Choose a task beside the message box. Describe the content, style and format you
 
 Documents, workbooks and slides adapt their fonts, colours, spacing and layouts to your request.
 
-Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. Granite Docling reads scans and embedded document images locally; readable text and tables are extracted directly. Reattaching an unchanged file reuses its processed content.
+Files support **20 MB each**, up to **five per message**. Audio supports ten minutes and video five minutes. Video uses sampled frames. PaddleOCR-VL 1.6 reads scans, photos of text and embedded document images locally, in over 100 languages; readable text and tables are extracted directly. Reattaching an unchanged file reuses its processed content.
 
 Long documents are read page by page and indexed in batches. Extraction keeps the complete text; unusually large expanded content is rejected explicitly to protect memory.
 
-Images use **Qwen Image 2.1 Turbo**. Rendering adjusts to available hardware, with exports up to 2048 pixels; larger exports may be resized. Generated speech is English. Review generated content before using it.
+Images use Baidu's **ERNIE-Image Turbo** (Apache 2.0, commercial use allowed) in eight steps. PCs with 16 GB of RAM and an 8 GB NVIDIA GPU get the higher-precision model at 1024 pixels; other PCs use a smaller one at 768 pixels. Exports go up to 2048 pixels; larger exports may be resized. Generated speech is English. Review generated content before using it.
 
-Qwen Image's license permits research and evaluation. Commercial use requires a separate license from Qwen; see the [model license](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE).
+Updating from 0.4.x downloads the new image and file-reading models once (about 9.3 GB, or 11 GB on the larger image profile) and overwrites the previous ones in place.
 
 ## Your workspace
 
@@ -49,7 +49,7 @@ The default chat model is **Qwen3.5 4B**, using Unsloth's Q4_K_M GGUF with llama
 | Desktop | Tauri, Rust, React, TypeScript, Vite and Windows WebView2 |
 | Backend | Python, FastAPI, Uvicorn, LangGraph and SQLite |
 | Local AI | Hugging Face, Unsloth GGUF, llama.cpp, Qwen3.5, EmbeddingGemma 2, Qdrant, PyTorch, Transformers and Sentence Transformers |
-| Image, scanning & voice | Qwen Image 2.1 Turbo, stable-diffusion.cpp, Granite Docling, Piper and faster-whisper |
+| Image, scanning & voice | ERNIE-Image Turbo, stable-diffusion.cpp, PaddleOCR-VL 1.6, Piper and faster-whisper |
 | Files | python-docx, ReportLab, openpyxl and python-pptx |
 | Tools & preparation | MCP, Node.js and uv |
 

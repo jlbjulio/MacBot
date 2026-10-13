@@ -36,9 +36,9 @@ def test_document_reader_receives_image_before_its_instruction():
     picture = io.BytesIO()
     Image.new("RGB", (900, 600), "white").save(picture, format="PNG")
     request = completion_body({"purpose": "ocr", "messages": [{"role": "user",
-        "content": "Convert this page to docling.", "images": [base64.b64encode(picture.getvalue()).decode()]}]})
+        "content": "OCR:", "images": [base64.b64encode(picture.getvalue()).decode()]}]})
     parts = request["messages"][0]["content"]
-    assert parts[0]["type"] == "image_url" and parts[1]["text"] == "Convert this page to docling."
+    assert parts[0]["type"] == "image_url" and parts[1]["text"] == "OCR:"
     assert parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert request["temperature"] == 0 and request["repeat_penalty"] == 1
     assert "chat_template_kwargs" not in request

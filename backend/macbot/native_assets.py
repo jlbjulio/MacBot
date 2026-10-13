@@ -13,7 +13,7 @@ def creation_manifest(name):
 
 def image_profile():
     import psutil
-    if psutil.virtual_memory().total >= 24 * 1024**3:
+    if psutil.virtual_memory().total >= 16 * 1024**3:
         try:
             result = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
                 capture_output=True, text=True, timeout=5,
@@ -57,7 +57,9 @@ def download_native(directory, name, progress, stop=None, reused=None):
     manifest = asset_manifest(name)
     records = manifest["files"]
     total, finished = sum(f["size"] for f in records), 0
-    remaining = sum(max(0, f["size"] - ((root / f["path"]).stat().st_size if (root / f["path"]).is_file() else 0)) for f in records)
+    # Same-named weights from a replaced model are overwritten, so only matching sizes count as present.
+    remaining = sum(f["size"] for f in records
+                    if not (root / f["path"]).is_file() or (root / f["path"]).stat().st_size != f["size"])
     if shutil.disk_usage(directory).free < remaining + 512 * 1024**2:
         raise ValueError("There is not enough free disk space for this model. Free some space and retry.")
     caches = {Path.home() / ".cache/huggingface/hub", directory / "cache/huggingface/hub"}

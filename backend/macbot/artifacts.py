@@ -480,5 +480,5 @@ async def generate(mode, prompt, runtime, model, store, job_id, emit, uploads=No
         metadata = {"theme": value["theme"]}
         answer = f"Created **{value['title']}**. Download your {mode} below."
     return {"answer": answer, "sources": [], "artifacts": [{"id": artifact_id, "kind": mode,
-            "name": f"MacBot.{extension}", "path": str(path), "metadata": {"prompt": prompt, "engine": "Qwen-Image-2.1-Turbo / stable-diffusion.cpp" if mode == "image" else "Piper" if mode == "audio" else model,
+            "name": f"MacBot.{extension}", "path": str(path), "metadata": {"prompt": prompt, "engine": "ERNIE-Image-Turbo / stable-diffusion.cpp" if mode == "image" else "Piper" if mode == "audio" else model,
             **metadata}}]}

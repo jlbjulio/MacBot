@@ -58,8 +58,8 @@ def normalize_messages(messages, image_limit=768, image_first=False, lossless=Fa
 
 def completion_body(request):
     if request.get("purpose") == "ocr":
-        return {"model": "macbot-ocr", "messages": normalize_messages(request["messages"], image_limit=1024, image_first=True, lossless=True),
-                "stream": True, "max_tokens": 8192, "temperature": 0.0, "top_p": 1.0,
+        return {"model": "macbot-ocr", "messages": normalize_messages(request["messages"], image_limit=1400, image_first=True, lossless=True),
+                "stream": True, "max_tokens": 6144, "temperature": 0.0, "top_p": 1.0,
                 "top_k": 0, "min_p": 0.0, "repeat_penalty": 1.0, "cache_prompt": False}
     effort = request.get("reasoning", "medium")
     if effort not in REASONING_BUDGETS:
@@ -133,7 +133,8 @@ def main():
             "--ubatch-size", "128", "--jinja", "--no-context-shift",
             "--no-webui", "--offline", "--log-verbosity", "2"]
         if ocr:
-            arguments += ["--flash-attn", "off", "--fit", "off", "--special"]
+            # PaddleOCR-VL needs its published template under llama-server.
+            arguments += ["--chat-template-file", str(source / "template.jinja"), "--flash-attn", "off", "--fit", "off"]
         else:
             arguments += ["--no-mmproj-offload", "--reasoning", "on", "--reasoning-format", "deepseek",
                           "--reasoning-budget", "256", "--no-reasoning-preserve"]
@@ -198,7 +199,7 @@ def main():
                                 emit({"token": token})
                             if choices[0].get("finish_reason") == "length":
                                 raise ValueError("The response reached its limit. Ask for a shorter result or split the task.")
-                    if not received:
+                    if not received and request.get("purpose") != "ocr":
                         raise ValueError("The model did not produce an answer. Try again with a smaller task.")
                     emit({"done": True})
                     print(f"generation_seconds={time.monotonic() - started:.3f} reasoning={request.get('reasoning')}",

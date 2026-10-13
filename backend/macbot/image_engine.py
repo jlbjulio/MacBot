@@ -22,7 +22,7 @@ def render(prompt, path, directory, width, height, seed, stop=None):
     model = prepare_asset(directory, "image")
     marker = json.loads((model / "macbot-model.json").read_text(encoding="utf-8"))
     profile = marker["profile"]
-    edge = 512 if profile == "compact" else 1024
+    edge = 768 if profile == "compact" else 1024
     scale = min(1, edge / max(width, height))
     native_width = max(128, round(width * scale / 32) * 32)
     native_height = max(128, round(height * scale / 32) * 32)
@@ -32,7 +32,7 @@ def render(prompt, path, directory, width, height, seed, stop=None):
         "--llm", str(model / "encoder.gguf"), "--vae", str(model / "vae.safetensors"),
         "-p", prompt, "-o", str(temporary), "-W", str(native_width), "-H", str(native_height),
         "--steps", str(recipe["steps"]), "--cfg-scale", str(recipe["cfg"]),
-        "--sampling-method", "euler", "--sigmas", ",".join(map(str, [*recipe["sigmas"], 0.0])),
+        "--sampling-method", "euler",
         "--seed", str(seed), "--mmap", "--params-backend", "disk", "--backend", "vae=cpu",
         "--max-vram", "-0.5", "--vae-tiling", "--diffusion-fa", "--log-level", "warn",
         "--threads", str(max(1, min(6, (os.cpu_count() or 4) // 2)))]
@@ -56,7 +56,7 @@ def render(prompt, path, directory, width, height, seed, stop=None):
                 raise ValueError("The image engine could not render this request. Free memory and retry; details are in the local image log.")
         completed = True
         return temporary, {"native_width": native_width, "native_height": native_height, "seed": seed,
-            "profile": profile, "model": "Qwen-Image-2.1-Turbo", "steps": recipe["steps"],
+            "profile": profile, "model": "ERNIE-Image-Turbo", "steps": recipe["steps"],
             "upscaled": native_width != width or native_height != height,
             "render_seconds": round(time.monotonic() - started, 3)}
     finally:
