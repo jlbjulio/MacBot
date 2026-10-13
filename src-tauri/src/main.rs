@@ -220,6 +220,7 @@ fn start_runtime(app: &tauri::AppHandle) -> Result<Connection, String> {
         .stderr(logfile);
     let child = spawn_hidden(&mut command)
         .map_err(|e| format!("The local workspace could not start: {e}"))?;
+    let pid = child.id();
     register_child(app, child)?;
     let base_url = format!("http://127.0.0.1:{port}/api");
     let start = Instant::now();
@@ -227,6 +228,21 @@ fn start_runtime(app: &tauri::AppHandle) -> Result<Connection, String> {
     while start.elapsed() < Duration::from_secs(180) {
         if app.state::<RuntimeState>().closing.load(Ordering::Acquire) {
             return Err("Startup cancelled".into());
+        }
+        // Fail fast when the backend exits during startup instead of waiting out the timeout.
+        let exited = app
+            .state::<RuntimeState>()
+            .children
+            .lock()
+            .map_err(|e| e.to_string())?
+            .iter_mut()
+            .find(|child| child.id() == pid)
+            .and_then(|child| child.try_wait().ok().flatten());
+        if let Some(status) = exited {
+            return Err(format!(
+                "The local workspace stopped during startup ({status}). Check {}",
+                directory.join("logs/backend.log").display()
+            ));
         }
         if client
             .get(format!("{base_url}/health"))
@@ -371,6 +387,7 @@ fn begin_startup(app: &tauri::AppHandle) {
         return;
     }
     state.stop.store(false, Ordering::Release);
+    *app.state::<RuntimeState>().error.lock().unwrap() = None;
     let handle = app.clone();
     std::thread::spawn(move || {
         let result = (|| -> Result<(), String> {
@@ -400,6 +417,14 @@ fn begin_startup(app: &tauri::AppHandle) {
         })();
         let state = handle.state::<bootstrap::Bootstrap>();
         let previous = state.progress.lock().unwrap().clone();
+        if let Err(error) = &result {
+            if error != "paused" {
+                // Pending `connection` calls report the real cause instead of a generic timeout.
+                *handle.state::<RuntimeState>().error.lock().unwrap() = Some(error.clone());
+            }
+        }
+        // Clear `active` before publishing the final phase so a Resume clicked right after is not dropped.
+        state.active.store(false, Ordering::Release);
         match result {
             Ok(()) => state.phase("ready", previous.total, previous.total, ""),
             Err(error) if error == "paused" => {
@@ -407,7 +432,6 @@ fn begin_startup(app: &tauri::AppHandle) {
             }
             Err(error) => state.phase("failed", previous.completed, previous.total, &error),
         }
-        state.active.store(false, Ordering::Release);
     });
 }
 

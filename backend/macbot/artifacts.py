@@ -278,11 +278,38 @@ def synthesize(text, path, directory):
     from piper.config import SynthesisConfig
     model = prepare_asset(directory, "voice") / VOICE_PREFIX / VOICE_FILE
     voice = PiperVoice.load(model, use_cuda=False)
-    with wave.open(str(path), "wb") as output:
-        voice.synthesize_wav(text[:6000], output, syn_config=SynthesisConfig(length_scale=1.05))
-    with wave.open(str(path), "rb") as check:
-        if check.getnframes() == 0:
-            raise ValueError("The voice engine produced an empty recording.")
+    # Write beside the target and publish only a verified recording, so a failed run is never cached.
+    partial = path.with_name(path.name + ".partial")
+    try:
+        with wave.open(str(partial), "wb") as output:
+            voice.synthesize_wav(text[:6000], output, syn_config=SynthesisConfig(length_scale=1.05))
+        with wave.open(str(partial), "rb") as check:
+            if check.getnframes() == 0:
+                raise ValueError("The voice engine produced an empty recording.")
+        partial.replace(path)
+    finally:
+        partial.unlink(missing_ok=True)
+
+
+def plain_background_alpha(picture, tolerance=28):
+    """Alpha mask that clears a light, plain background connected to the image edges."""
+    from PIL import ImageChops, ImageDraw, ImageFilter
+    rgb = picture.convert("RGB")
+    width, height = rgb.size
+    corners = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
+    if any(min(rgb.getpixel(corner)) < 215 for corner in corners):
+        return None
+    marked = rgb.copy()
+    for corner in corners:
+        ImageDraw.floodfill(marked, corner, (255, 0, 255), thresh=tolerance)
+    changed = ImageChops.difference(marked, rgb).convert("L").point(lambda value: 255 if value else 0)
+    if changed.getbbox() is None:
+        return None
+    alpha = ImageChops.invert(changed).filter(ImageFilter.GaussianBlur(0.8))
+    # A mask that removes almost everything means the subject touched the edges; keep the image opaque.
+    if sum(alpha.histogram()[128:]) < width * height * 0.03:
+        return None
+    return alpha
 
 
 def draw_image(prompt, path, directory, seed=42, options=None, stop=None):
@@ -297,12 +324,16 @@ def draw_image(prompt, path, directory, seed=42, options=None, stop=None):
     if specification.negative_prompt:
         brief += ". Avoid: " + specification.negative_prompt
     if specification.transparent:
-        brief = "This is an RGBA image with transparency. " + brief + ". The image has alpha channel and the background is transparent."
+        # The image engine renders RGB only, so ask for a plain backdrop and remove it afterwards.
+        brief += ". Isolated subject centered on a plain pure white background, no shadow, no scenery."
     temporary, metadata = render(brief[:1800], path, directory, specification.width, specification.height, seed, stop)
     try:
         with Image.open(temporary) as source:
             picture = source.copy()
         alpha = picture.getchannel("A") if picture.mode == "RGBA" else None
+        if alpha is None and specification.transparent and specification.format != "jpeg":
+            alpha = plain_background_alpha(picture)
+        metadata["transparent"] = alpha is not None
         if specification.filter == "grayscale":
             picture = ImageOps.grayscale(picture.convert("RGB")).convert("RGB")
         elif specification.filter == "sepia":

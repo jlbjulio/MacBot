@@ -13,12 +13,14 @@ class DocumentOCR:
 
     def __init__(self, directory):
         self.runtime = LlamaRuntime(directory, purpose="ocr")
-        self.runner = asyncio.Runner()
+        self.runner = None
         self.cache = {}
 
     def __enter__(self):
         from .assets import prepare_asset
         prepare_asset(self.runtime.directory, "ocr")
+        # Created only after preparation succeeds, so a failed download never leaks an event loop.
+        self.runner = asyncio.Runner()
         return self
 
     def read(self, image):
@@ -42,6 +44,7 @@ class DocumentOCR:
         async def recognize():
             messages = [{"role": "user", "content": "OCR:", "images": [base64.b64encode(data).decode("ascii")]}]
             return "".join([part async for part in self.runtime.stream(MODEL_NAME, messages)])
+        assert self.runner is not None, "Use DocumentOCR as a context manager."
         text = self.runner.run(recognize()).strip()
         if len(text) > 100_000:
             raise ValueError("The scanned page exceeds the text limit.")
@@ -49,7 +52,10 @@ class DocumentOCR:
         return text
 
     def __exit__(self, *args):
+        if self.runner is None:
+            return
         try:
             self.runner.run(self.runtime.unload())
         finally:
             self.runner.close()
+            self.runner = None

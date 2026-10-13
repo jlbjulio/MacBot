@@ -22,6 +22,8 @@ You need Windows x64, [WebView2](https://learn.microsoft.com/en-us/microsoft-edg
 - Dictate messages, transcribe audio and read replies aloud.
 - Connect local or remote MCP tools in **Settings** and approve their actions.
 
+Pick **Light**, **Dark** or **Match Windows** in Settings → Appearance. **Ctrl+,** opens Settings and **Ctrl+Shift+O** starts a new conversation.
+
 Choose a task beside the message box. Describe the content, style and format you want—for example, “Create a purple and cream proposal as Word and PDF.”
 
 Documents, workbooks and slides adapt their fonts, colours, spacing and layouts to your request.
@@ -30,7 +32,7 @@ Files support **20 MB each**, up to **five per message**. Audio supports ten min
 
 Long documents are read page by page and indexed in batches. Extraction keeps the complete text; unusually large expanded content is rejected explicitly to protect memory.
 
-Images use Baidu's **ERNIE-Image Turbo** (Apache 2.0, commercial use allowed) in eight steps. PCs with 16 GB of RAM and an 8 GB NVIDIA GPU get the higher-precision model at 1024 pixels; other PCs use a smaller one at 768 pixels. Exports go up to 2048 pixels; larger exports may be resized. Generated speech is English. Review generated content before using it.
+Images use Baidu's **ERNIE-Image Turbo** (Apache 2.0, commercial use allowed) in eight steps. PCs with 16 GB of RAM and an 8 GB NVIDIA GPU get the higher-precision model at 1024 pixels; other PCs use a smaller one at 768 pixels. Exports go up to 2048 pixels; larger exports may be resized. For a transparent PNG or WebP, MacBot renders the subject on a plain background and removes it; busy backgrounds stay opaque. Generated speech is English. Review generated content before using it.
 
 Updating from 0.4.x downloads the new image and file-reading models once (about 9.3 GB, or 11 GB on the larger image profile) and overwrites the previous ones in place.
 

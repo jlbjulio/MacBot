@@ -1,8 +1,10 @@
 import io
+import logging
 import zipfile
 from pathlib import Path
 
 MAX_EXTRACTED_CHARACTERS = 20_000_000
+RASTER_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/bmp", "image/tiff", "image/webp"}
 
 
 def append_text(output, text, separator="\n"):
@@ -58,9 +60,18 @@ def extract(name, content, directory=None):
                     readable |= bool(text.strip())
                     continue
                 for picture in page.images:
+                    # Pictures only add to a page that already has text, so one that cannot be
+                    # decoded (JBIG2 without its codec, oversized scans) is skipped, not fatal.
+                    try:
+                        image = picture.image
+                    except Exception as error:
+                        logging.getLogger(__name__).warning("Skipped an embedded PDF image: %s", error)
+                        continue
+                    if image is None or image.width * image.height > 25_000_000:
+                        continue
                     if ocr is None:
                         ocr = stack.enter_context(DocumentOCR(directory or data_directory()))
-                    extracted = ocr.read(picture.image)
+                    extracted = ocr.read(image)
                     if extracted and " ".join(extracted.split()) not in " ".join(text.split()):
                         append_text(output, extracted)
         if not readable:
@@ -120,7 +131,9 @@ def extract(name, content, directory=None):
                     append_text(output, " | ".join(cell.text for cell in row.cells))
             else:
                 append_text(output, item.text)
-        images = [r.target_part for r in doc.part.rels.values() if not r.is_external and r.reltype.endswith("/image")]
+        # Word also links SVG icons as images; only raster parts can be read.
+        images = [r.target_part for r in doc.part.rels.values() if not r.is_external and r.reltype.endswith("/image")
+                  and r.target_part.content_type.lower() in RASTER_TYPES]
         if images:
             from .ocr import DocumentOCR
             from .media import normalized_image

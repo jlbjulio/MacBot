@@ -38,13 +38,17 @@ export function Connections({ onError }: { onError: (message: string) => void })
     } else await api("/mcp/servers", { method: "POST", body: JSON.stringify({ ...value, transport: value.url ? "http" : "stdio", enabled: false, trusted: false }) });
     setText(""); setStatus("Connection saved. Inspect its tools, then enable it when you are ready.");
   }
+  function resetForm() {
+    setEditing(null); setName(""); setTransport("http"); setAddress(""); setArgumentsText("[]");
+    setCredentials("{}"); setTrusted(false); setCwd("");
+  }
   async function saveConnection() {
     const values = JSON.parse(credentials) as Record<string, string>;
     const args = JSON.parse(argumentsText) as string[];
     const body = {name, transport, command: transport === "stdio" ? address : "", url: transport === "http" ? address : "",
       args, headers: transport === "http" ? values : {}, env: transport === "stdio" ? values : {}, enabled: false, trusted, cwd};
     await api(editing ? `/mcp/servers/${editing}` : "/mcp/servers", {method: editing ? "PUT" : "POST", body: JSON.stringify(body)});
-    setEditing(null); setName(""); setAddress(""); setCredentials("{}"); setArgumentsText("[]"); setTrusted(false); setCwd("");
+    resetForm();
     setStatus("Connection saved. Inspect its tools, then enable it.");
   }
   return <>
@@ -85,7 +89,7 @@ export function Connections({ onError }: { onError: (message: string) => void })
         <small>Credentials are encrypted for your Windows profile. Re-enter them after moving to a different user or computer.</small>
         <label className="connection-trust"><input type="checkbox" checked={trusted} onChange={event => setTrusted(event.target.checked)} /> I trust this server’s publisher and permissions.</label>
         <button disabled={working || !name.trim() || !address.trim()} onClick={() => void action(saveConnection)}>{editing ? "Save changes" : "Save connection"}</button>
-        {editing && <button onClick={() => {setEditing(null); setName(""); setAddress(""); setCredentials("{}");}}>Cancel edit</button>}
+        {editing && <button onClick={resetForm}>Cancel edit</button>}
       </div>
       <details><summary>Paste an existing MCP configuration</summary>
       <label htmlFor="mcp-config">MCP connection JSON</label>

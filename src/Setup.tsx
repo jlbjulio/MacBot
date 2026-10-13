@@ -1,6 +1,7 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCw } from "lucide-react";
 import { api } from "./api";
+import { Mark } from "./Mark";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type Preparation = {
@@ -93,8 +94,8 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
   }
   return <main className="setup-screen">
     <div className="setup-panel">
-      <span className="setup-wordmark">MacBot</span>
-      <div className="setup-record" aria-hidden="true"><span /></div>
+      <span className="setup-wordmark"><Mark small />MacBot</span>
+      <div className={`setup-record ${active ? "spinning" : ""}`} aria-hidden="true"><span /></div>
       <h1>{heading}</h1>
       <div className="setup-progress">
         <div className="setup-progress-label"><span role="status">{label}</span><span>{current?.total ? `${percent}%` : ""}</span></div>

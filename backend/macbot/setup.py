@@ -100,6 +100,9 @@ def download_file(url, target, size, digest, progress, stop, git_blob=False, can
             if reused:
                 reused(size)
             return
+        except InterruptedError:
+            # A pause is also an OSError; it must stop the copy, not move to the next source.
+            raise
         except OSError:
             continue
     if partial.exists() and partial.stat().st_size > size:

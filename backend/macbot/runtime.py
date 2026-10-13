@@ -94,7 +94,7 @@ class LlamaRuntime:
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log,
             text=True, encoding="utf-8", env=environment, creationflags=creationflags)
             assert self.process.stdout is not None
-            result = json.loads(await asyncio.wait_for(asyncio.to_thread(self.process.stdout.readline), 240))
+            result = json.loads(await asyncio.wait_for(asyncio.to_thread(self.process.stdout.readline), 420))
             if not result.get("ready"):
                 raise ValueError(result.get("error", "The local model could not load."))
         except (OSError, TimeoutError, ValueError, asyncio.CancelledError):

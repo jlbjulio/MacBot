@@ -163,7 +163,11 @@ fn enough_space(root: &Path, needed: u64) -> Result<(), String> {
         return Err(std::io::Error::last_os_error().to_string());
     }
     if available < needed {
-        return Err("Not enough free space. Allow 16 GB for preparation and retry.".into());
+        return Err(format!(
+            "Not enough free space on {}. Allow {} GB for preparation and retry.",
+            root.display(),
+            needed.div_ceil(1024u64.pow(3))
+        ));
     }
     Ok(())
 }
@@ -370,6 +374,8 @@ pub fn ensure(
         return Ok(());
     }
     enough_space(root, 8 * 1024u64.pow(3))?;
+    // Downloaded archives and model caches live in the data folder, which may be on another drive.
+    enough_space(data, 2 * 1024u64.pow(3))?;
     let default_cache = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_default()
@@ -481,6 +487,9 @@ pub fn ensure(
         {
             continue;
         }
+        // A new or damaged engine is rebuilt from scratch so DLLs from an older version never load beside it.
+        let _ = fs::remove_dir_all(&destination);
+        owned_directory(&destination)?;
         state.step(&format!("Checking existing {}", engine.name));
         state.phase("verifying", 0, 0, "");
         let mut candidates = Vec::new();
@@ -589,10 +598,25 @@ pub fn ensure(
             }
         }
     }
-    for legacy in ["ollama-model.json", "macbot/persona.py"] {
-        let file = target(&python.join("app"), legacy)?;
-        if file.exists() {
-            fs::remove_file(file).map_err(|e| e.to_string())?;
+    // Remove app files that are no longer part of this release, such as renamed or deleted modules.
+    let expected: std::collections::HashSet<&str> = manifest
+        .payload_files
+        .iter()
+        .filter_map(|record| record.path.strip_prefix("app/"))
+        .collect();
+    for folder in ["", "macbot"] {
+        let directory = python.join("app").join(folder);
+        let Ok(entries) = fs::read_dir(&directory) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let relative = if folder.is_empty() { name } else { format!("{folder}/{name}") };
+            if !expected.contains(relative.as_str()) {
+                fs::remove_file(&path).map_err(|e| e.to_string())?;
+            }
         }
     }
     for folder in [
@@ -687,6 +711,11 @@ fn download(
                 stalls += 1;
                 if stalls >= 3 {
                     return Err(format!("Download interrupted: {error}. Retry to resume."));
+                }
+                // Back off (1 s, then 2 s) so a brief network drop does not use up every retry.
+                for _ in 0..(1u64 << (stalls - 1)) * 4 {
+                    state.interrupted()?;
+                    std::thread::sleep(Duration::from_millis(250));
                 }
                 continue;
             }

@@ -5,6 +5,8 @@ import { ArtifactView, ReadAloud } from "./Artifacts";
 import { Connections } from "./Connections";
 import { SetupScreen, usePreparation } from "./Setup";
 import { Privacy } from "./Privacy";
+import { Mark } from "./Mark";
+import { saveTheme, storedTheme, type Theme } from "./theme";
 import {
   ArrowDown,
   ArrowUp,
@@ -15,7 +17,6 @@ import {
   Download,
   FileText,
   Globe2,
-  Headphones,
   Menu,
   MessageCircle,
   Mic,
@@ -57,16 +58,7 @@ const initialConfig: Config = {
   language: "en",
 };
 
-function Mark({ small = false }: { small?: boolean }) {
-  return (
-    <span className={`mark ${small ? "small" : ""}`} aria-hidden="true">
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
+const reasoningLabels = { low: "Low", medium: "Medium", high: "High" } as const;
 
 export default function App() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -101,6 +93,9 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [theme, setTheme] = useState<Theme>(storedTheme);
+  const stickToBottom = useRef(true);
+  const shortcuts = useRef<(event: KeyboardEvent) => void>(() => {});
   const fileInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -142,8 +137,26 @@ export default function App() {
     }
   }, [preparation.state?.capabilities.chat]);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "instant", block: "end" });
+    // Follow streaming output only while the reader is already at the end.
+    if (stickToBottom.current) bottom.current?.scrollIntoView({ behavior: "instant", block: "end" });
   }, [messages, draft, stage]);
+  useEffect(() => saveTheme(theme), [theme]);
+  // The latest handler lives in a ref so the window listener is registered once.
+  shortcuts.current = (event: KeyboardEvent) => {
+    if (!workspaceReady || !event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.key === ",") {
+      event.preventDefault();
+      setSettings(true);
+    } else if (event.shiftKey && event.key.toLowerCase() === "o" && !settings) {
+      event.preventDefault();
+      newChat();
+    }
+  };
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => shortcuts.current(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
   useEffect(() => {
     if (settings) {
       setSettingsConfig(config);
@@ -162,6 +175,7 @@ export default function App() {
         messages: Message[];
         jobs: { id: string; status: string }[];
       }>(`/chats/${chat.id}`);
+      stickToBottom.current = true;
       setActive(chat.id);
       setMessages(result.messages);
       setSources([]);
@@ -202,6 +216,7 @@ export default function App() {
     if (!ready(mode) || !modelInstalled || !prompt.trim() || busy || uploading || recording || transcribing)
       return;
     const text = prompt.trim();
+    stickToBottom.current = true;
     cancelRequested.current = false;
     setError("");
     setBusy(true);
@@ -215,6 +230,8 @@ export default function App() {
       if (!chatId) {
         const chat = await api<Chat>("/chats", { method: "POST" });
         chatId = chat.id;
+        // Show the conversation right away; the refreshed list replaces this title later.
+        setChats((previous) => [{ id: chat.id, title: text }, ...previous]);
         setActive(chat.id);
       }
       const result = await api<{ id: string }>("/runs", {
@@ -305,6 +322,7 @@ export default function App() {
     }
   }
   async function continueTask(identifier: string, approved?: boolean) {
+    stickToBottom.current = true;
     setBusy(true); setError(""); setDraft(""); setJobId(identifier); setApproval(null); setRecoverable(null);
     const controller = new AbortController(); abort.current = controller;
     try {
@@ -446,8 +464,8 @@ export default function App() {
             macbot<span className="brand-dot">.</span>
           </span>
         </button>
-        <button className="new-chat" onClick={newChat} disabled={busy}>
-          <Plus size={18} /> New conversation <span>↗</span>
+        <button className="new-chat" onClick={newChat} disabled={busy} title="New conversation (Ctrl+Shift+O)" aria-keyshortcuts="Control+Shift+O">
+          <Plus size={18} /> New conversation
         </button>
         <label className="search-box">
           <Search size={15} />
@@ -458,7 +476,7 @@ export default function App() {
             aria-label="Search conversations"
           />
         </label>
-        <div className="history-heading">YOUR SPACE</div>
+        <div className="history-heading">Conversations</div>
         <nav className="history" aria-label="Conversations">
           {chats
             .filter((chat) =>
@@ -495,15 +513,14 @@ export default function App() {
               <small>Files and history on your device</small>
             </span>
           </div>
-          <button className="settings-button" onClick={() => setSettings(true)}>
-            <Settings2 size={17} /> Settings <span>⌘</span>
+          <button className="settings-button" onClick={() => setSettings(true)} aria-keyshortcuts="Control+Comma">
+            <Settings2 size={17} /> Settings <kbd>Ctrl ,</kbd>
           </button>
         </div>
       </aside>
       <main className="workspace">
         <div className="atmosphere" aria-hidden="true">
           <div className="sun" />
-          <div className="horizon" />
           <div className="grain" />
         </div>
         <header className="topbar">
@@ -515,24 +532,29 @@ export default function App() {
             >
               <Menu size={20} />
             </button>
-            <span>A place for your ideas</span>
+            <span className="topbar-title">
+              {chats.find((chat) => chat.id === active)?.title ?? "New conversation"}
+            </span>
           </div>
-          <button className="model-pill" onClick={() => setSettings(true)}>
+          <button className="model-pill" onClick={() => setSettings(true)} title="Model and thinking settings">
             <span
               className={modelInstalled ? "status-dot" : "status-dot offline"}
             />
-            {config.model}
+            <span className="sr-only">{modelInstalled ? "Ready:" : "Not ready:"}</span>
+            MacBot 4B
+            <span className="model-pill-detail">{reasoningLabels[config.reasoning]} thinking</span>
             <ChevronDown size={14} />
           </button>
         </header>
         <div
           className={`conversation ${hasConversation ? "has-messages" : ""}`}
+          onScroll={(event) => {
+            const view = event.currentTarget;
+            stickToBottom.current = view.scrollHeight - view.scrollTop - view.clientHeight < 80;
+          }}
         >
           {!hasConversation ? (
             <section className="welcome">
-              <div className="welcome-label">
-                <Headphones size={14} /> TUNE INTO AN IDEA
-              </div>
               <Mark />
               <h1>What's on your mind?</h1>
               <p>
@@ -553,14 +575,12 @@ export default function App() {
                   <span>
                     Go a little further<small>Follow a question deeper</small>
                   </span>
-                  <span className="suggestion-arrow">↗</span>
                 </button>
                 <button disabled={!ready("attachments")} onClick={() => fileInput.current?.click()}>
                   <FileText size={22} />
                   <span>
                     Connect the pieces<small>Explore your files</small>
                   </span>
-                  <span className="suggestion-arrow">↗</span>
                 </button>
                 <button
                   onClick={() => {
@@ -573,7 +593,6 @@ export default function App() {
                   <span>
                     Find your rhythm<small>Give an idea some shape</small>
                   </span>
-                  <span className="suggestion-arrow">↗</span>
                 </button>
               </div>
             </section>
@@ -581,11 +600,13 @@ export default function App() {
             <div className="message-list">
               {messages.map((message) => (
                 <article className={`message ${message.role}`} key={message.id}>
-                  <div className="message-avatar">
-                    {message.role === "assistant" ? <Mark small /> : "YOU"}
-                  </div>
+                  {message.role === "assistant" && (
+                    <div className="message-avatar">
+                      <Mark small />
+                    </div>
+                  )}
                   <div className="message-body">
-                    <div className="message-label">
+                    <div className={message.role === "assistant" ? "message-label" : "sr-only"}>
                       {message.role === "assistant" ? "MacBot" : "You"}
                     </div>
                     <ReactMarkdown
@@ -614,8 +635,8 @@ export default function App() {
                       />
                     )}
                     {message.role === "assistant" && (
-                      <div className="message-actions">
-                        <Download size={14} />
+                      <div className="message-actions" role="group" aria-label="Save this response">
+                        <Download size={14} aria-hidden="true" />
                         <span>Save as</span>
                         {["md", "pdf", "docx"].map((format) => (
                           <button
@@ -626,7 +647,7 @@ export default function App() {
                               )
                             }
                           >
-                            {format.toUpperCase()}
+                            {format === "docx" ? "Word" : format.toUpperCase()}
                           </button>
                         ))}
                       </div>
@@ -735,10 +756,10 @@ export default function App() {
               }}
               placeholder={
                 recording
-                  ? "Listening… press the microphone to finish"
+                  ? "Listening… press stop to finish"
                   : mode === "research"
                     ? "What would you like to research?"
-                    : "Write something. It starts here."
+                    : "Ask, attach a file or describe what to create"
               }
               rows={2}
               aria-label="Message MacBot"
@@ -817,10 +838,10 @@ export default function App() {
           <div className="composer-caption">
             <span>
               {mode === "research"
-                ? "Web research · sources and citations · needs internet"
-                : "Local models. Room for ideas."}
+                ? "Research searches the web and cites its sources."
+                : "Runs on this PC. Your files stay here."}
             </span>
-            <span>MacBot can make mistakes. Check what matters.</span>
+            <span>MacBot can be wrong. Check what matters.</span>
           </div>
         </section>
         <input
@@ -856,10 +877,7 @@ export default function App() {
         }}
       >
         <div className="dialog-header">
-          <div>
-            <span className="eyebrow">YOUR WAY</span>
-            <h2 id="settings-title">MacBot settings</h2>
-          </div>
+          <h2 id="settings-title">Settings</h2>
           <button
             className="icon-button"
             aria-label="Close settings"
@@ -882,6 +900,17 @@ export default function App() {
           <div className="connection-status">
             <span className={models.available ? "status-dot" : "status-dot offline"} />
             {models.available ? "Ready on this PC" : "Preparation needed"}
+          </div>
+        </div>
+        <div className="settings-section">
+          <h3>Appearance</h3>
+          <p>Changes apply right away on this PC.</p>
+          <div className="segmented" role="group" aria-label="Theme">
+            {(["system", "light", "dark"] as const).map((value) => (
+              <button key={value} aria-pressed={theme === value} onClick={() => setTheme(value)}>
+                {value === "system" ? "Match Windows" : value === "light" ? "Light" : "Dark"}
+              </button>
+            ))}
           </div>
         </div>
         <div className="settings-section">

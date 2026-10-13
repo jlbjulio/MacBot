@@ -57,6 +57,12 @@ def prepare():
     if uv.resolve() != (TARGET / "uv.exe").resolve():
         shutil.copy2(uv, TARGET / "uv.exe")
     app = PAYLOAD / "app"
+    # Rebuild the app payload from scratch so deleted or renamed modules never ship.
+    for stale in (app, TARGET / "bootstrap/app"):
+        if stale.exists():
+            if stale.is_symlink() or not stale.resolve().is_relative_to(ROOT.resolve()):
+                raise RuntimeError("Unexpected app payload folder.")
+            shutil.rmtree(stale)
     (app / "macbot").mkdir(parents=True, exist_ok=True)
     for source in (ROOT / "backend/macbot").glob("*.py"):
         shutil.copy2(source, app / "macbot" / source.name)
